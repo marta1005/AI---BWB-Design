@@ -1,0 +1,14 @@
+{
+  "xyz_path": "/Users/marta.arnabat/Desktop/BWB/project_v4/ffd/example_outputs/reference_ffd_box/reference_semispan_ffd.xyz",
+  "n_streamwise": 10,
+  "n_vertical": 2,
+  "n_spanwise": 17,
+  "full_wing": false,
+  "x_min": -1.22,
+  "x_max": 41.87645208845343,
+  "y_min": -3.220878576216099,
+  "y_max": 6.353560039199102,
+  "z_min": -0.24,
+  "z_max": 39.66,
+  "dvgeo_load_ok": null
+}

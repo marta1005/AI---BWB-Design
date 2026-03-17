@@ -49,6 +49,7 @@ def main() -> None:
     metadata = {
         "example_name": "reference_v4_demo",
         "design_variables": asdict(design),
+        "profile_generation_mode": config.sections.profile_generation_mode,
         "topology_name": config.topology.topology_name,
         "section_names": ["root", "section_2", "section_3", "tip"],
         "section_y_m": [float(value) for value in y_sections],
@@ -110,6 +111,18 @@ def main() -> None:
             "min_inner_tc_xc": prepared.validation.min_inner_tc_xc,
             "num_samples": prepared.validation.num_samples,
         },
+        "volume_constraint": {
+            "enabled": prepared.volume.enabled,
+            "satisfied": prepared.volume.satisfied,
+            "enclosed_volume_m3": prepared.volume.enclosed_volume_m3,
+            "required_volume_m3": prepared.volume.required_volume_m3,
+            "volume_margin_m3": prepared.volume.volume_margin_m3,
+            "volume_ratio": prepared.volume.volume_ratio,
+            "mean_cross_section_area_m2": prepared.volume.mean_cross_section_area_m2,
+            "max_cross_section_area_m2": prepared.volume.max_cross_section_area_m2,
+            "max_cross_section_area_y": prepared.volume.max_cross_section_area_y,
+            "span_samples": prepared.volume.span_samples,
+        },
         "iges_export_success": True,
         "iges_path": str(iges_path),
         "profiles_dir": str(profiles_dir),
@@ -135,6 +148,10 @@ def main() -> None:
         "Reference v4 CST class: "
         f"N1={config.sections.n1:.2f}, N2={config.sections.n2:.2f} | "
         f"full 6+6 per section"
+    )
+    print(
+        "Reference v4 profile generation mode: "
+        f"{config.sections.profile_generation_mode}"
     )
     print(
         "Reference v4 x_tmax: "

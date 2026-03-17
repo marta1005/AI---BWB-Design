@@ -35,7 +35,7 @@ class GemseoDesignSpaceAdapter:
     preset_name: str
     project_space: LocalDesignSpace
     variable_specs: Tuple[GemseoVariableSpec, ...]
-    gemseo_space: object
+    gemseo_space: Optional[object]
 
     def reference_sample(self) -> Dict[str, np.ndarray]:
         reference_flat = flatten_design(self.project_space.reference_design)
@@ -62,6 +62,15 @@ class GemseoDesignSpaceAdapter:
                 }
             )
         return rows
+
+    def flat_gemseo_variable_names(self) -> List[str]:
+        names: List[str] = []
+        for spec in self.variable_specs:
+            if spec.size == 1:
+                names.append(spec.name)
+            else:
+                names.extend(f"{spec.name}[{idx}]" for idx in range(spec.size))
+        return names
 
     def to_project_design(
         self,
@@ -97,6 +106,113 @@ class GemseoDesignSpaceAdapter:
         design = SectionedBWBDesignVariables.from_vector(vector)
         design.validate()
         return design
+
+    def flat_vector_to_gemseo_sample(
+        self,
+        vector: Sequence[float],
+    ) -> Dict[str, np.ndarray]:
+        values = np.asarray(vector, dtype=float).ravel()
+        expected_size = sum(spec.size for spec in self.variable_specs)
+        if values.size != expected_size:
+            raise ValueError(
+                "Expected flattened GEMSEO vector of size %d, received %d"
+                % (expected_size, values.size)
+            )
+        sample = {}
+        offset = 0
+        for spec in self.variable_specs:
+            sample[spec.name] = values[offset : offset + spec.size]
+            offset += spec.size
+        return sample
+
+    def flat_vector_to_project_design(
+        self,
+        vector: Sequence[float],
+    ) -> SectionedBWBDesignVariables:
+        return self.to_project_design(self.flat_vector_to_gemseo_sample(vector))
+
+
+@dataclass(frozen=True)
+class SampleGeometryEvaluation:
+    geometry_valid: bool
+    error_message: str
+    profile_generation_mode: str
+    volume_enabled: bool
+    volume_satisfied: bool
+    enclosed_volume_m3: float
+    required_volume_m3: float
+    volume_margin_m3: float
+    volume_ratio: float
+    mean_cross_section_area_m2: float
+    max_cross_section_area_m2: float
+    max_cross_section_area_y: float
+    min_inner_tc: float
+    min_inner_tc_y: float
+    min_inner_tc_xc: float
+
+
+def evaluate_gemseo_sample_geometry(
+    adapter: GemseoDesignSpaceAdapter,
+    sample: Mapping[str, Sequence[float]],
+    profile_generation_mode: str = "cst_only",
+    required_volume_m3: Optional[float] = None,
+    volume_span_samples: int = 161,
+    interpolation_override: Optional[str] = None,
+) -> SampleGeometryEvaluation:
+    from .builder import prepare_geometry
+
+    design = adapter.to_project_design(sample)
+    config = design.to_model_config(profile_generation_mode=profile_generation_mode)
+    if interpolation_override is not None:
+        config.sampling.section_interpolation = interpolation_override
+        config.spanwise.twist_deg.interpolation = interpolation_override
+        config.spanwise.camber_delta.interpolation = interpolation_override
+    if required_volume_m3 is not None:
+        config.volume.enabled = True
+        config.volume.required_volume_m3 = float(required_volume_m3)
+        config.volume.span_samples = int(volume_span_samples)
+        config.volume.enforce_hard = False
+
+    try:
+        prepared = prepare_geometry(config)
+    except Exception as exc:
+        volume_enabled = required_volume_m3 is not None
+        nan = float("nan")
+        return SampleGeometryEvaluation(
+            geometry_valid=False,
+            error_message=str(exc),
+            profile_generation_mode=profile_generation_mode,
+            volume_enabled=volume_enabled,
+            volume_satisfied=False,
+            enclosed_volume_m3=nan,
+            required_volume_m3=float(required_volume_m3) if required_volume_m3 is not None else nan,
+            volume_margin_m3=nan,
+            volume_ratio=nan,
+            mean_cross_section_area_m2=nan,
+            max_cross_section_area_m2=nan,
+            max_cross_section_area_y=nan,
+            min_inner_tc=nan,
+            min_inner_tc_y=nan,
+            min_inner_tc_xc=nan,
+        )
+
+    return SampleGeometryEvaluation(
+        geometry_valid=True,
+        error_message="",
+        profile_generation_mode=profile_generation_mode,
+        volume_enabled=prepared.volume.enabled,
+        volume_satisfied=prepared.volume.satisfied,
+        enclosed_volume_m3=prepared.volume.enclosed_volume_m3,
+        required_volume_m3=prepared.volume.required_volume_m3,
+        volume_margin_m3=prepared.volume.volume_margin_m3,
+        volume_ratio=prepared.volume.volume_ratio,
+        mean_cross_section_area_m2=prepared.volume.mean_cross_section_area_m2,
+        max_cross_section_area_m2=prepared.volume.max_cross_section_area_m2,
+        max_cross_section_area_y=prepared.volume.max_cross_section_area_y,
+        min_inner_tc=prepared.validation.min_inner_tc,
+        min_inner_tc_y=prepared.validation.min_inner_tc_y,
+        min_inner_tc_xc=prepared.validation.min_inner_tc_xc,
+    )
 
 
 def _project_to_bounded_simplex(
@@ -148,7 +264,7 @@ def _project_to_bounded_simplex(
 def _gemseo_variable_specs(active_groups: Tuple[str, ...]) -> Tuple[GemseoVariableSpec, ...]:
     specs: List[GemseoVariableSpec] = []
     for group_name in active_groups:
-        if group_name == "topology":
+        if group_name in {"topology", "spans"}:
             specs.extend(
                 [
                     GemseoVariableSpec(
@@ -206,6 +322,45 @@ def _gemseo_variable_specs(active_groups: Tuple[str, ...]) -> Tuple[GemseoVariab
                         description="Root nose blending length.",
                     ),
                 ]
+            )
+        elif group_name == "chords":
+            specs.extend(
+                [
+                    GemseoVariableSpec(
+                        name="c1_root_chord",
+                        project_parameters=("c1_root_chord",),
+                        units="m",
+                        normalization="absolute",
+                        description="Root chord.",
+                    ),
+                    GemseoVariableSpec(
+                        name="chord_ratios",
+                        project_parameters=("c2_c1_ratio", "c3_c1_ratio", "c4_c1_ratio"),
+                        units="-",
+                        normalization="ratio to C1",
+                        description="Chord ratios of sections C2, C3 and C4.",
+                    ),
+                ]
+            )
+        elif group_name == "nose_blend":
+            specs.append(
+                GemseoVariableSpec(
+                    name="nose_blend_y",
+                    project_parameters=("nose_blend_y",),
+                    units="m",
+                    normalization="absolute",
+                    description="Root nose blending length.",
+                )
+            )
+        elif group_name == "sweeps":
+            specs.append(
+                GemseoVariableSpec(
+                    name="sweeps_deg",
+                    project_parameters=("s1_deg", "s2_deg", "s3_deg"),
+                    units="deg",
+                    normalization="angle",
+                    description="Leading-edge sweep angles S1, S2 and S3.",
+                )
             )
         elif group_name == "class_function":
             specs.append(
@@ -341,19 +496,136 @@ def _add_variable(design_space: object, spec: GemseoVariableSpec, bounds: Dict[s
         )
 
 
-def build_gemseo_design_space(
-    preset_name: str = "presentation_core",
+def _build_gemseo_adapter(
+    preset_name: str,
     reference_design: Optional[SectionedBWBDesignVariables] = None,
+    instantiate_backend: bool = True,
 ) -> GemseoDesignSpaceAdapter:
     project_space = build_design_space(preset_name, reference_design=reference_design)
     variable_specs = _gemseo_variable_specs(project_space.active_groups)
     reference_flat = flatten_design(project_space.reference_design)
-    gemseo_space = _new_gemseo_design_space()
-    for spec in variable_specs:
-        _add_variable(gemseo_space, spec, project_space.bounds, reference_flat)
+    gemseo_space = None
+    if instantiate_backend:
+        gemseo_space = _new_gemseo_design_space()
+        for spec in variable_specs:
+            _add_variable(gemseo_space, spec, project_space.bounds, reference_flat)
     return GemseoDesignSpaceAdapter(
         preset_name=preset_name,
         project_space=project_space,
         variable_specs=variable_specs,
         gemseo_space=gemseo_space,
     )
+
+
+def build_gemseo_design_space(
+    preset_name: str = "presentation_core",
+    reference_design: Optional[SectionedBWBDesignVariables] = None,
+) -> GemseoDesignSpaceAdapter:
+    return _build_gemseo_adapter(
+        preset_name=preset_name,
+        reference_design=reference_design,
+        instantiate_backend=True,
+    )
+
+
+def build_gemseo_design_space_definition(
+    preset_name: str = "presentation_core",
+    reference_design: Optional[SectionedBWBDesignVariables] = None,
+) -> GemseoDesignSpaceAdapter:
+    return _build_gemseo_adapter(
+        preset_name=preset_name,
+        reference_design=reference_design,
+        instantiate_backend=False,
+    )
+
+
+def build_ai_gemseo_design_space(
+    reference_design: Optional[SectionedBWBDesignVariables] = None,
+) -> GemseoDesignSpaceAdapter:
+    return build_gemseo_design_space(
+        preset_name="ai_geometry_core",
+        reference_design=reference_design,
+    )
+
+
+def available_gemseo_doe_algorithms() -> Tuple[str, ...]:
+    try:
+        from gemseo import get_available_doe_algorithms
+    except ModuleNotFoundError as exc:
+        raise ModuleNotFoundError(
+            "GEMSEO is not installed. Use Python 3.11 and install it with "
+            "`python -m pip install 'gemseo>=6,<7'`."
+        ) from exc
+
+    return tuple(sorted(get_available_doe_algorithms()))
+
+
+def sample_gemseo_doe(
+    adapter: GemseoDesignSpaceAdapter,
+    n_samples: int,
+    algo_name: str = "LHS",
+    seed: int = 7,
+) -> List[np.ndarray]:
+    if adapter.gemseo_space is None:
+        raise ValueError(
+            "The GEMSEO backend is not instantiated. "
+            "Use build_gemseo_design_space(...), not build_gemseo_design_space_definition(...)."
+        )
+    if int(n_samples) <= 0:
+        raise ValueError("n_samples must be a strictly positive integer.")
+
+    try:
+        from gemseo import Discipline, create_scenario
+    except ModuleNotFoundError as exc:
+        raise ModuleNotFoundError(
+            "GEMSEO is not installed. Use Python 3.11 and install it with "
+            "`python -m pip install 'gemseo>=6,<7'`."
+        ) from exc
+
+    available_algorithms = available_gemseo_doe_algorithms()
+    if algo_name not in available_algorithms:
+        raise ValueError(
+            "DOE algorithm %r is not available in this GEMSEO installation. Available algorithms: %s"
+            % (algo_name, ", ".join(available_algorithms))
+        )
+
+    class _GemseoSamplingDiscipline(Discipline):
+        def __init__(self, variable_specs: Tuple[GemseoVariableSpec, ...]):
+            super().__init__()
+            self._variable_specs = variable_specs
+            default_inputs = {
+                spec.name: np.zeros(spec.size, dtype=float)
+                for spec in variable_specs
+            }
+            self.input_grammar.update_from_data(default_inputs)
+            self.output_grammar.update_from_data(
+                {"sampling_objective": np.zeros(1, dtype=float)}
+            )
+            self.default_input_data = default_inputs
+
+        def _run(self, input_data):
+            objective = 0.0
+            for spec in self._variable_specs:
+                values = np.asarray(input_data[spec.name], dtype=float).ravel()
+                objective += float(np.dot(values, values))
+            return {"sampling_objective": np.asarray([objective], dtype=float)}
+
+    scenario = create_scenario(
+        disciplines=[_GemseoSamplingDiscipline(adapter.variable_specs)],
+        formulation="DisciplinaryOpt",
+        objective_name="sampling_objective",
+        design_space=adapter.gemseo_space,
+        scenario_type="DOE",
+        name="project_v4_design_space_sampling",
+    )
+    scenario.execute(
+        algo_name=algo_name,
+        n_samples=int(n_samples),
+        seed=int(seed),
+    )
+
+    optimization_problem = getattr(scenario, "optimization_problem", None)
+    if optimization_problem is None:
+        optimization_problem = scenario.formulation.optimization_problem
+    database = optimization_problem.database
+    return [np.asarray(vector, dtype=float).ravel() for vector in database.get_x_vect_history()]

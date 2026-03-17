@@ -10,9 +10,10 @@ The intent of the current design-space definition is to keep the exploration foc
 - spanwise topology
 - chord law
 - leading-edge sweep law
+- sectional twist
 - full CST coefficients for each control section
 
-Twist, thickness targets, and other secondary controls remain available in the codebase, but are not included in the primary design-space table below.
+The current active design-space definition keeps `dihedral = 0` fixed and leaves thickness targets, CST class exponents, root-blend settings, and other modeling controls constant.
 
 ## 1. Active Design-Space Parameters
 
@@ -26,10 +27,13 @@ Twist, thickness targets, and other secondary controls remain available in the c
 | Chord law | `c2_c1_ratio` | `C2 / C1` | `-` | Chord ratio at control section `C2`. |
 | Chord law | `c3_c1_ratio` | `C3 / C1` | `-` | Chord ratio at control section `C3`. |
 | Chord law | `c4_c1_ratio` | `C4 / C1` | `-` | Chord ratio at control section `C4`. |
-| LE sweep law | `le_root_x` | `x_LE,root` | m | Root leading-edge x-position. Defines the planform x-origin. |
 | LE sweep law | `s1_deg` | `S1` | deg | Leading-edge sweep angle of the first segment (`C0 -> C1`). |
 | LE sweep law | `s2_deg` | `S2` | deg | Leading-edge sweep angle of the second segment (`C1 -> C2`). |
 | LE sweep law | `s3_deg` | `S3` | deg | Leading-edge sweep angle of the third segment (`C2 -> C3`). |
+| Twist law | `twist_c1_deg` | `twist_C1` | deg | Twist angle at control section `C1`. |
+| Twist law | `twist_c2_deg` | `twist_C2` | deg | Twist angle at control section `C2`. |
+| Twist law | `twist_c3_deg` | `twist_C3` | deg | Twist angle at control section `C3`. |
+| Twist law | `twist_c4_deg` | `twist_C4` | deg | Twist angle at control section `C4`. |
 | CST shape at section C1 | `c1_upper_cst_0..5` | `A^u_{C1,0..5}` | `-` | Upper-surface Kulfan/CST coefficients at `C1`. |
 | CST shape at section C1 | `c1_lower_cst_0..5` | `A^l_{C1,0..5}` | `-` | Lower-surface Kulfan/CST coefficients at `C1`. |
 | CST shape at section C2 | `c2_upper_cst_0..5` | `A^u_{C2,0..5}` | `-` | Upper-surface Kulfan/CST coefficients at `C2`. |
@@ -46,8 +50,8 @@ The current recommended **primary design space** is:
 - `span`
 - `B1, B2, B3` ratios
 - `C1, C2/C1, C3/C1, C4/C1`
-- `LE root x`
 - `S1, S2, S3`
+- `twist_C1, twist_C2, twist_C3, twist_C4`
 - full `6 + 6` CST coefficients at each control section
 
 This gives direct control over:
@@ -56,6 +60,7 @@ This gives direct control over:
 - spanwise partitioning
 - planform chord distribution
 - segment-by-segment sweep
+- spanwise twist law
 - local airfoil shape at each control section
 
 ## 2. Fixed Internal Modeling Parameters That Can Be Retuned
@@ -88,5 +93,4 @@ These parameters are currently **fixed in the implementation**. They are not par
 
 ## Recommended message for presentations
 
-> The current `project_v4` design space is intentionally restricted to span, span partition, chord law, leading-edge sweep by segment, and full CST coefficients at each control section. Continuity, spline blending, trailing-edge exactness, sampling, and export behavior are controlled by fixed internal modeling parameters that can still be retuned if needed.
-
+> The current `project_v4` design space is intentionally restricted to span, span partition, chord law, leading-edge sweep by segment, twist at the control sections, and full CST coefficients at each control section, while dihedral is fixed to zero. Continuity, spline blending, trailing-edge exactness, sampling, and export behavior are controlled by fixed internal modeling parameters that can still be retuned if needed.

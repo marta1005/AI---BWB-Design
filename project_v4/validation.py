@@ -25,6 +25,20 @@ class ValidationSummary:
     num_samples: int
 
 
+@dataclass
+class ConstraintSample:
+    y: float
+    max_tc: float
+    x_tmax: float
+    te_thickness: float
+    min_inner_tc: float
+    min_inner_tc_xc: float
+    max_camber: float
+    reference_tc_max: float
+    reference_x_tmax: float
+    reference_te_thickness: float
+
+
 def validate_loft_definition(loft: LoftDefinition) -> None:
     if not np.all(np.isfinite(loft.leading_edge_x)):
         raise ValueError("leading_edge_x contains non-finite values")
@@ -65,7 +79,6 @@ def validate_section_geometry(
     global_min_tc = np.inf
     global_min_y = np.nan
     global_min_xc = np.nan
-    valid_indices = np.where(section_model.mask_valid_window)[0]
 
     for yy in sample_y:
         params = section_model.params_at_y(float(yy))
@@ -76,32 +89,22 @@ def validate_section_geometry(
         if not np.isfinite(params.x_tmax):
             raise ValueError(f"invalid x_tmax at y={yy:.6f}: {params.x_tmax}")
 
-        yu, yl = section_model.shape.evaluate(
-            section_model.x_air,
-            params.coeffs,
-            te_thickness=params.te_thickness,
-            tc_target=params.tc_max,
-            x_tmax=params.x_tmax,
-        )
+        yu, yl, _ = section_model.coordinates_at_y(float(yy))
         if not np.all(np.isfinite(yu)) or not np.all(np.isfinite(yl)):
             raise ValueError(f"non-finite airfoil coordinates at y={yy:.6f}")
 
-        thickness = yu - yl
-        min_local_tc = float(np.min(thickness[section_model.mask_valid_window]))
+        metrics, _ = section_model.geometry_metrics_at_y(float(yy))
+        min_local_tc = metrics.min_inner_tc
         if min_local_tc <= 0.0:
-            bad_local_idx = int(np.argmin(thickness[section_model.mask_valid_window]))
-            bad_idx = int(valid_indices[bad_local_idx])
             raise ValueError(
-                f"thickness collapse at y={yy:.6f}, x/c={section_model.x_air[bad_idx]:.6f}, "
+                f"thickness collapse at y={yy:.6f}, x/c={metrics.min_inner_tc_xc:.6f}, "
                 f"t/c={min_local_tc:.6e}"
             )
 
         if min_local_tc < global_min_tc:
-            bad_local_idx = int(np.argmin(thickness[section_model.mask_valid_window]))
-            bad_idx = int(valid_indices[bad_local_idx])
             global_min_tc = min_local_tc
             global_min_y = float(yy)
-            global_min_xc = float(section_model.x_air[bad_idx])
+            global_min_xc = float(metrics.min_inner_tc_xc)
 
     return ValidationSummary(
         min_inner_tc=global_min_tc,
@@ -109,3 +112,27 @@ def validate_section_geometry(
         min_inner_tc_xc=global_min_xc,
         num_samples=int(sample_y.size),
     )
+
+
+def evaluate_section_constraints(
+    section_model: SectionModel,
+    sample_y: np.ndarray,
+) -> list[ConstraintSample]:
+    samples: list[ConstraintSample] = []
+    for yy in np.asarray(sample_y, dtype=float):
+        metrics, params = section_model.geometry_metrics_at_y(float(yy))
+        samples.append(
+            ConstraintSample(
+                y=float(yy),
+                max_tc=metrics.max_tc,
+                x_tmax=metrics.x_tmax,
+                te_thickness=metrics.te_thickness,
+                min_inner_tc=metrics.min_inner_tc,
+                min_inner_tc_xc=metrics.min_inner_tc_xc,
+                max_camber=metrics.max_camber,
+                reference_tc_max=float(params.tc_max),
+                reference_x_tmax=float(params.x_tmax),
+                reference_te_thickness=float(params.te_thickness),
+            )
+        )
+    return samples

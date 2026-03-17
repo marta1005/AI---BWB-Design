@@ -1,6 +1,6 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Tuple
+from typing import Optional, Tuple
 
 import numpy as np
 
@@ -36,6 +36,35 @@ class SectionCSTSpec:
             raise ValueError(f"{prefix}.x_tmax must lie in (0, 1), got {self.x_tmax}")
         if self.te_thickness < 0.0:
             raise ValueError(f"{prefix}.te_thickness must be non-negative, got {self.te_thickness}")
+
+
+@dataclass(frozen=True)
+class SectionProfileRelationSpec:
+    shape_source_index: Optional[int] = None
+    upper_source_index: Optional[int] = None
+    lower_source_index: Optional[int] = None
+    te_source_index: Optional[int] = None
+
+    def validate(self, prefix: str, section_index: int, section_count: int) -> None:
+        for label, source_index in (
+            ("shape_source_index", self.shape_source_index),
+            ("upper_source_index", self.upper_source_index),
+            ("lower_source_index", self.lower_source_index),
+            ("te_source_index", self.te_source_index),
+        ):
+            if source_index is None:
+                continue
+            if not (0 <= source_index < section_count):
+                raise ValueError(
+                    f"{prefix}.{label} must lie inside [0, {section_count - 1}], got {source_index}"
+                )
+            if source_index == section_index:
+                raise ValueError(f"{prefix}.{label} cannot reference itself (section {section_index})")
+            if source_index > section_index:
+                raise ValueError(
+                    f"{prefix}.{label} must reference an earlier section to avoid cyclic dependencies, "
+                    f"got source={source_index}, section={section_index}"
+                )
 
 
 @dataclass
@@ -162,6 +191,7 @@ class SectionFamilySpec:
     cst_degree: int = 5
     n1: float = 0.50
     n2: float = 1.0
+    profile_generation_mode: str = "cst_only"
     camber_mode_center: float = 3.5
     camber_mode_width: float = 2.0
     c1_spec: SectionCSTSpec = field(
@@ -200,6 +230,14 @@ class SectionFamilySpec:
             te_thickness=0.001,
         )
     )
+    profile_relations: Tuple[SectionProfileRelationSpec, ...] = field(
+        default_factory=lambda: (
+            SectionProfileRelationSpec(),
+            SectionProfileRelationSpec(),
+            SectionProfileRelationSpec(),
+            SectionProfileRelationSpec(),
+        )
+    )
 
     @property
     def ncoeff(self) -> int:
@@ -210,14 +248,59 @@ class SectionFamilySpec:
         return 2 * self.ncoeff
 
     @property
-    def section_specs(self) -> Tuple[SectionCSTSpec, SectionCSTSpec, SectionCSTSpec, SectionCSTSpec]:
+    def base_section_specs(self) -> Tuple[SectionCSTSpec, SectionCSTSpec, SectionCSTSpec, SectionCSTSpec]:
         return (self.c1_spec, self.c2_spec, self.c3_spec, self.c4_spec)
+
+    @property
+    def section_specs(self) -> Tuple[SectionCSTSpec, SectionCSTSpec, SectionCSTSpec, SectionCSTSpec]:
+        resolved = [replace(spec) for spec in self.base_section_specs]
+        if len(self.profile_relations) != len(resolved):
+            raise ValueError(
+                "profile_relations must match the number of control sections, "
+                f"got {len(self.profile_relations)} relations for {len(resolved)} sections"
+            )
+
+        for idx, relation in enumerate(self.profile_relations):
+            resolved_spec = resolved[idx]
+            if relation.shape_source_index is not None:
+                source = resolved[relation.shape_source_index]
+                resolved_spec = replace(
+                    resolved_spec,
+                    upper_coeffs=source.upper_coeffs,
+                    lower_coeffs=source.lower_coeffs,
+                    tc_max=source.tc_max,
+                    x_tmax=source.x_tmax,
+                    te_thickness=source.te_thickness,
+                )
+            if relation.upper_source_index is not None:
+                resolved_spec = replace(
+                    resolved_spec,
+                    upper_coeffs=resolved[relation.upper_source_index].upper_coeffs,
+                )
+            if relation.lower_source_index is not None:
+                resolved_spec = replace(
+                    resolved_spec,
+                    lower_coeffs=resolved[relation.lower_source_index].lower_coeffs,
+                )
+            if relation.te_source_index is not None:
+                resolved_spec = replace(
+                    resolved_spec,
+                    te_thickness=resolved[relation.te_source_index].te_thickness,
+                )
+            resolved[idx] = resolved_spec
+
+        return tuple(resolved)
 
     def validate(self) -> None:
         if self.cst_degree < 2:
             raise ValueError(f"cst_degree must be at least 2, got {self.cst_degree}")
         if self.n1 <= 0.0 or self.n2 <= 0.0:
             raise ValueError(f"n1 and n2 must be positive, got {(self.n1, self.n2)}")
+        if self.profile_generation_mode not in {"cst_only", "enforce_targets"}:
+            raise ValueError(
+                "profile_generation_mode must be 'cst_only' or 'enforce_targets', "
+                f"got {self.profile_generation_mode!r}"
+            )
         if self.camber_mode_width <= 0.0:
             raise ValueError(
                 f"camber_mode_width must be positive, got {self.camber_mode_width}"
@@ -231,12 +314,22 @@ class SectionFamilySpec:
                 f"x_valid_window must satisfy 0 <= x0 < x1 <= 1, got {self.x_valid_window}"
             )
         expected_size = self.ncoeff
-        for idx, spec in enumerate(self.section_specs, start=1):
+        base_specs = self.base_section_specs
+        if len(self.profile_relations) != len(base_specs):
+            raise ValueError(
+                "profile_relations must match the number of control sections, "
+                f"got {len(self.profile_relations)} relations for {len(base_specs)} sections"
+            )
+        for idx, relation in enumerate(self.profile_relations):
+            relation.validate(f"profile_relations[{idx}]", idx, len(base_specs))
+        for idx, spec in enumerate(base_specs, start=1):
             spec.validate(f"c{idx}_spec", expected_size)
             if not (self.x_tc_window[0] <= spec.x_tmax <= self.x_tc_window[1]):
                 raise ValueError(
                     f"c{idx}_spec.x_tmax={spec.x_tmax} must lie inside x_tc_window={self.x_tc_window}"
                 )
+        for idx, spec in enumerate(self.section_specs, start=1):
+            spec.validate(f"resolved_c{idx}_spec", expected_size)
 
 
 @dataclass
@@ -307,6 +400,26 @@ class ExportSpec:
 
 
 @dataclass
+class VolumeConstraintSpec:
+    enabled: bool = False
+    required_volume_m3: float = 0.0
+    span_samples: int = 161
+    enforce_hard: bool = False
+
+    def validate(self, topology: SectionedBWBTopologySpec) -> None:
+        if not self.enabled:
+            return
+        if self.required_volume_m3 <= 0.0:
+            raise ValueError(
+                f"required_volume_m3 must be positive when volume constraint is enabled, got {self.required_volume_m3}"
+            )
+        if self.span_samples < 11:
+            raise ValueError(f"span_samples must be >= 11, got {self.span_samples}")
+        if topology.span <= 0.0:
+            raise ValueError(f"topology span must be positive, got {topology.span}")
+
+
+@dataclass
 class SectionedBWBModelConfig:
     topology: SectionedBWBTopologySpec = field(default_factory=SectionedBWBTopologySpec)
     planform: PlanformSpec = field(default_factory=PlanformSpec)
@@ -314,6 +427,7 @@ class SectionedBWBModelConfig:
     spanwise: SpanwiseLawSpec = field(default_factory=SpanwiseLawSpec)
     sampling: SamplingSpec = field(default_factory=SamplingSpec)
     export: ExportSpec = field(default_factory=ExportSpec)
+    volume: VolumeConstraintSpec = field(default_factory=VolumeConstraintSpec)
 
     def validate(self) -> None:
         self.topology.validate()
@@ -323,6 +437,7 @@ class SectionedBWBModelConfig:
         self.spanwise.validate(self.topology)
         self.sampling.validate()
         self.export.validate()
+        self.volume.validate(self.topology)
         section_count = self.topology.y_sections_array.size
         if len(self.sections.section_specs) != section_count:
             raise ValueError(

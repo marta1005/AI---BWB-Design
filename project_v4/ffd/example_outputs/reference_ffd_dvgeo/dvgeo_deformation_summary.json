@@ -1,0 +1,12 @@
+{
+  "baseline_ffd": "/Users/marta.arnabat/Desktop/BWB/project_v4/ffd/example_outputs/reference_ffd_dvgeo/reference_semispan_ffd.xyz",
+  "deformed_ffd": "/Users/marta.arnabat/Desktop/BWB/project_v4/ffd/example_outputs/reference_ffd_dvgeo/deformed_semispan_ffd.xyz",
+  "figure_path": "/Users/marta.arnabat/Desktop/BWB/project_v4/ffd/example_outputs/reference_ffd_dvgeo/reference_semispan_ffd_deformation.png",
+  "figure_3d_path": "/Users/marta.arnabat/Desktop/BWB/project_v4/ffd/example_outputs/reference_ffd_dvgeo/reference_semispan_ffd_deformation_3d.png",
+  "gif_path": "/Users/marta.arnabat/Desktop/BWB/project_v4/ffd/example_outputs/reference_ffd_dvgeo/reference_semispan_ffd_deformation.gif",
+  "full_wing": false,
+  "surface_spanwise": 19,
+  "surface_chordwise": 81,
+  "dv_scale": 0.68,
+  "n_frames": 28
+}

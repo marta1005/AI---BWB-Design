@@ -23,8 +23,14 @@ Ahora mismo cada sección usa:
 - `te_thickness` por sección
 
 La clase CST está fijada por defecto a `N1=0.5`, `N2=1.0` para una familia tipo `NACA`.
-El `x_tmax` no va embebido en los coeficientes: se usa como objetivo geométrico adicional
-para desplazar la posición del espesor máximo sin perder continuidad `C2`.
+El modo geométrico por defecto es ahora `cst_only`:
+
+- la forma 2D se genera directamente desde los coeficientes `CST`
+- `tc_max` y `x_tmax` se conservan como referencias/constraints geométricas posteriores
+- `te_thickness` sigue disponible como parámetro geométrico separado del borde de salida
+
+Sigue existiendo un modo legacy `enforce_targets` para reconstrucciones donde se quiera imponer
+`tc_max` y `x_tmax` durante la generación del perfil.
 
 La cabina no forma parte del modelo geométrico de `v4`.
 
@@ -36,6 +42,7 @@ La cabina no forma parte del modelo geométrico de `v4`.
 - `sections.py`: construcción CST e interpolación spanwise
 - `spanwise_laws.py`: leyes `thickness`, `twist`, `camber` y diedro
 - `validation.py`: validación geométrica
+- `volume.py`: evaluación de la constraint de volumen encerrado
 - `exporters.py`: escritura de perfiles y exportación `pyGeo`
 - `dependency_setup.py`: bootstrap y recompilación automática de `pyspline` si hace falta
 - `builder.py`: ensamblado completo de la geometría
@@ -91,6 +98,8 @@ Presets disponibles:
 - `presentation_core`: planform + twist + thickness targets
 - `planform_only`
 - `aero_sections`
+- `ai_geometry_core`: spans + chords + sweeps + nose blend + twists + full CST coefficients, while dihedral and TE thickness remain fixed by the reference design
+- `gemseo_geometry_core`: spans + chords + sweeps + twists + full CST coefficients
 - `section_shapes`
 - `full_geometry`
 
@@ -99,6 +108,9 @@ Ejemplo para generar variantes válidas y compararlas:
 - `.venv/bin/python project_v4/examples/explore_design_space.py`
 - `.venv/bin/python project_v4/examples/explore_design_space.py --preset full_geometry --count 8 --variation-scale 0.15`
 - `.venv/bin/python project_v4/examples/design_space/export_bounds_table.py`
+- `.venv/bin/python project_v4/examples/design_space/inspect_gemseo_design_space.py --preset ai_geometry_core`
+- `.venv/bin/python project_v4/examples/design_space/export_gemseo_bounds_table.py --preset ai_geometry_core`
+- `.venv/bin/python project_v4/examples/design_space/sample_gemseo_lhs.py --preset ai_geometry_core --n-samples 32 --algo LHS --seed 7`
 
 La salida se escribe en `project_v4/example_outputs/design_space_<preset>/` e incluye:
 
@@ -115,6 +127,7 @@ La tabla completa de bounds se genera en:
 - `project_v4/docs/design_variable_bounds.csv`
 - `project_v4/docs/design_variable_bounds.md`
 - `project_v4/docs/geometric_parametrization_tables.md`
+- `project_v4/docs/profile_relations.md`
 
 ## GEMSEO
 
@@ -142,6 +155,7 @@ Inspección rápida:
 
 - `.venv/bin/python project_v4/examples/design_space/inspect_gemseo_design_space.py`
 - `.venv/bin/python project_v4/examples/design_space/inspect_gemseo_design_space.py --preset full_geometry`
+- `.venv/bin/python project_v4/examples/design_space/sample_gemseo_lhs.py --preset ai_geometry_core --n-samples 32`
 
 Guía corta de instalación:
 

@@ -1,0 +1,14 @@
+{
+  "xyz_path": "/Users/marta.arnabat/Desktop/BWB/project_v4/ffd/example_outputs/reference_ffd_box/reference_fullwing_ffd.xyz",
+  "n_streamwise": 10,
+  "n_vertical": 2,
+  "n_spanwise": 29,
+  "full_wing": true,
+  "x_min": -5.45,
+  "x_max": 46.55,
+  "y_min": -4.727947827678069,
+  "y_max": 8.10408805842502,
+  "z_min": -39.72,
+  "z_max": 39.72,
+  "dvgeo_load_ok": null
+}

@@ -20,6 +20,16 @@ class SectionShapeParameters:
 
 
 @dataclass
+class SectionGeometryMetrics:
+    max_tc: float
+    x_tmax: float
+    te_thickness: float
+    min_inner_tc: float
+    min_inner_tc_xc: float
+    max_camber: float
+
+
+@dataclass
 class SectionModel:
     shape: KulfanCSTAirfoil
     x_air: np.ndarray
@@ -37,6 +47,7 @@ class SectionModel:
     te_interpolant: Callable[[float], float]
     camber_mode_center: float
     camber_mode_width: float
+    profile_generation_mode: str
     interpolation_name: str
 
     def params_at_y(self, y: float) -> SectionShapeParameters:
@@ -57,14 +68,40 @@ class SectionModel:
 
     def coordinates_at_y(self, y: float) -> tuple[np.ndarray, np.ndarray, SectionShapeParameters]:
         params = self.params_at_y(float(y))
-        yu, yl = self.shape.evaluate(
-            self.x_air,
-            params.coeffs,
-            te_thickness=params.te_thickness,
-            tc_target=params.tc_max,
-            x_tmax=params.x_tmax,
-        )
+        evaluate_kwargs = {
+            "te_thickness": params.te_thickness,
+        }
+        if self.profile_generation_mode == "enforce_targets":
+            evaluate_kwargs["tc_target"] = params.tc_max
+            evaluate_kwargs["x_tmax"] = params.x_tmax
+        yu, yl = self.shape.evaluate(self.x_air, params.coeffs, **evaluate_kwargs)
         return yu, yl, params
+
+    def geometry_metrics_at_y(
+        self,
+        y: float,
+    ) -> tuple[SectionGeometryMetrics, SectionShapeParameters]:
+        yu, yl, params = self.coordinates_at_y(float(y))
+        thickness = yu - yl
+        camber = 0.5 * (yu + yl)
+
+        tc_window_x = self.x_air[self.mask_tc_window]
+        tc_window_thickness = thickness[self.mask_tc_window]
+        tc_idx = int(np.argmax(tc_window_thickness))
+
+        valid_window_x = self.x_air[self.mask_valid_window]
+        valid_window_thickness = thickness[self.mask_valid_window]
+        valid_idx = int(np.argmin(valid_window_thickness))
+
+        metrics = SectionGeometryMetrics(
+            max_tc=float(tc_window_thickness[tc_idx]),
+            x_tmax=float(tc_window_x[tc_idx]),
+            te_thickness=float(thickness[-1]),
+            min_inner_tc=float(valid_window_thickness[valid_idx]),
+            min_inner_tc_xc=float(valid_window_x[valid_idx]),
+            max_camber=float(np.max(np.abs(camber))),
+        )
+        return metrics, params
 
 
 def camber_mode_vector(
@@ -171,6 +208,6 @@ def build_section_model(
         te_interpolant=te_interpolant,
         camber_mode_center=sections.camber_mode_center,
         camber_mode_width=sections.camber_mode_width,
+        profile_generation_mode=sections.profile_generation_mode,
         interpolation_name=interpolation_name,
     )
-

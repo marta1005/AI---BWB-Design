@@ -262,8 +262,9 @@ def main() -> None:
 
     status_text = (
         f"Full CST 6+6 at C1/C2/C3/C4 | N1={config.sections.n1:.2f}, N2={config.sections.n2:.2f}\n"
-        f"tc targets = ({design.c1_tc_max:.3f}, {design.c2_tc_max:.3f}, {design.c3_tc_max:.3f}, {design.c4_tc_max:.3f})\n"
-        f"x_tmax targets = ({design.c1_x_tmax:.3f}, {design.c2_x_tmax:.3f}, {design.c3_x_tmax:.3f}, {design.c4_x_tmax:.3f})\n"
+        f"profile mode = {config.sections.profile_generation_mode}\n"
+        f"tc refs = ({design.c1_tc_max:.3f}, {design.c2_tc_max:.3f}, {design.c3_tc_max:.3f}, {design.c4_tc_max:.3f})\n"
+        f"x_tmax refs = ({design.c1_x_tmax:.3f}, {design.c2_x_tmax:.3f}, {design.c3_x_tmax:.3f}, {design.c4_x_tmax:.3f})\n"
         f"Twist anchors [deg] = {tuple(config.spanwise.twist_deg.values)}\n"
         f"min inner t/c = {prepared.validation.min_inner_tc:.3f}"
     )
@@ -377,13 +378,16 @@ def main() -> None:
     max_profile_thickness = []
     raw_profiles = []
     profile_params = []
+    profile_metrics = []
     for y, chord, twist_deg in zip(y_sections, chords, config.spanwise.twist_deg.values):
         x_profile, zu_profile, zl_profile, params = section_profile_geometry(
             prepared.section_model, float(y), float(chord)
         )
+        metrics, _ = prepared.section_model.geometry_metrics_at_y(float(y))
         xu, zu_rot, xl, zl_rot = rotate_profile_with_twist(x_profile, zu_profile, zl_profile, float(twist_deg))
         raw_profiles.append((xu, zu_rot, xl, zl_rot))
         profile_params.append(params)
+        profile_metrics.append(metrics)
         max_profile_thickness.append(float(max(np.max(zu_rot), np.max(zl_rot)) - min(np.min(zu_rot), np.min(zl_rot))))
 
     profile_offsets = [0.0]
@@ -392,8 +396,8 @@ def main() -> None:
         profile_offsets.append(profile_offsets[-1] - clearance)
 
     label_x = float(np.max(chords) + 3.0)
-    for idx, ((label, y, chord), (xu, zu_profile, xl, zl_profile), params, offset, color) in enumerate(
-        zip(zip(section_labels, y_sections, chords), raw_profiles, profile_params, profile_offsets, profile_colors)
+    for idx, ((label, y, chord), (xu, zu_profile, xl, zl_profile), params, metrics, offset, color) in enumerate(
+        zip(zip(section_labels, y_sections, chords), raw_profiles, profile_params, profile_metrics, profile_offsets, profile_colors)
     ):
         zu_shift = zu_profile + offset
         zl_shift = zl_profile + offset
@@ -428,7 +432,7 @@ def main() -> None:
             label_x,
             offset,
             f"{label}: c={float(chord):.2f} m | y={float(y):.2f} m | twist={float(config.spanwise.twist_deg.values[idx]):.1f} deg\n"
-            f"tc={params.tc_max:.3f} | x_tmax={params.x_tmax:.3f} | te={params.te_thickness:.4f} | max camber={max_camber / float(chord):.4f}",
+            f"tc_measured={metrics.max_tc:.3f} | x_tmax_measured={metrics.x_tmax:.3f} | te={metrics.te_thickness:.4f} | max camber={max_camber / float(chord):.4f}",
             fontsize=8.3,
             color="#243b53",
             va="center",

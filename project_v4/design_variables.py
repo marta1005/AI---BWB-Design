@@ -1,5 +1,7 @@
 from dataclasses import dataclass, field, fields
-from typing import Dict, Tuple
+from functools import lru_cache
+from math import comb
+from typing import Dict, Optional, Tuple
 
 import numpy as np
 
@@ -9,6 +11,7 @@ from .specs import (
     SamplingSpec,
     SectionCSTSpec,
     SectionFamilySpec,
+    SectionProfileRelationSpec,
     SectionedBWBModelConfig,
     SpanwiseLawSpec,
 )
@@ -35,6 +38,160 @@ def _full_surface_seed(
 
 def _flatten_tuple_names(prefix: str, values: Tuple[float, ...]) -> Tuple[str, ...]:
     return tuple(f"{prefix}_{idx}" for idx in range(len(values)))
+
+
+def _cst_bound_window(reference: float, coeff_idx: int) -> Tuple[float, float]:
+    if coeff_idx <= 1:
+        delta = max(0.012, 0.18 * float(reference))
+    elif coeff_idx <= 3:
+        delta = max(0.010, 0.20 * float(reference))
+    elif coeff_idx == 4:
+        delta = max(0.008, 0.22 * float(reference))
+    else:
+        delta = max(0.004, 0.25 * float(reference))
+    lower = max(0.0, float(reference) - delta)
+    upper = float(reference) + delta
+    return lower, upper
+
+
+# The paper does not provide direct Bernstein-coefficient bounds.
+# Instead, it fits fifth-order CST coefficients to a family of NACA 4-digit
+# airfoils with N1=0.5 and N2=1.0. We reproduce that logic here and derive
+# coefficient-wise bounds from a section-specific NACA family centered on the
+# intended airfoil thickness level of each station.
+_SECTION_PAPER_TC_RANGES: Dict[str, Tuple[float, float]] = {
+    "c1": (0.14, 0.19),
+    "c2": (0.11, 0.16),
+    "c3": (0.07, 0.10),
+    "c4": (0.05, 0.08),
+}
+
+
+def _naca4_surfaces(x: np.ndarray, m: float, p: float, t: float) -> Tuple[np.ndarray, np.ndarray]:
+    x = np.asarray(x, dtype=float)
+    yt = 5.0 * float(t) * (
+        0.2969 * np.sqrt(np.clip(x, 0.0, 1.0))
+        - 0.1260 * x
+        - 0.3516 * x**2
+        + 0.2843 * x**3
+        - 0.1015 * x**4
+    )
+
+    if m <= 0.0 or p <= 0.0:
+        yc = np.zeros_like(x)
+        dyc_dx = np.zeros_like(x)
+    else:
+        yc = np.where(
+            x < p,
+            m / (p**2) * (2.0 * p * x - x**2),
+            m / ((1.0 - p) ** 2) * ((1.0 - 2.0 * p) + 2.0 * p * x - x**2),
+        )
+        dyc_dx = np.where(
+            x < p,
+            2.0 * m / (p**2) * (p - x),
+            2.0 * m / ((1.0 - p) ** 2) * (p - x),
+        )
+
+    del dyc_dx
+    return yc + yt, yc - yt
+
+
+def _cosine_spacing(n: int) -> np.ndarray:
+    beta = np.linspace(0.0, np.pi, int(n))
+    return 0.5 * (1.0 - np.cos(beta))
+
+
+def _bernstein_matrix(x: np.ndarray, degree: int) -> np.ndarray:
+    x = np.asarray(x, dtype=float)
+    basis = np.zeros((x.size, degree + 1), dtype=float)
+    for idx in range(degree + 1):
+        basis[:, idx] = float(comb(degree, idx)) * (x**idx) * ((1.0 - x) ** (degree - idx))
+    return basis
+
+
+def _fit_cst_surface_coeffs(
+    x: np.ndarray,
+    y_upper: np.ndarray,
+    y_lower: np.ndarray,
+    degree: int,
+    n1: float,
+    n2: float,
+) -> Tuple[np.ndarray, np.ndarray]:
+    x = np.asarray(x, dtype=float)
+    y_upper = np.asarray(y_upper, dtype=float)
+    y_lower = np.asarray(y_lower, dtype=float)
+
+    interior = (x > 1.0e-4) & (x < 0.99)
+    x_fit = x[interior]
+    class_fun = (x_fit**float(n1)) * ((1.0 - x_fit) ** float(n2))
+    basis = _bernstein_matrix(x_fit, degree)
+
+    upper_rhs = y_upper[interior] / class_fun
+    lower_rhs = -y_lower[interior] / class_fun
+
+    regularization = 1.0e-6 * np.eye(degree + 1)
+    upper_coeffs = np.linalg.solve(basis.T @ basis + regularization, basis.T @ upper_rhs)
+    lower_coeffs = np.linalg.solve(basis.T @ basis + regularization, basis.T @ lower_rhs)
+    return upper_coeffs.astype(float), lower_coeffs.astype(float)
+
+
+@lru_cache(maxsize=None)
+def _paper_section_cst_bounds(
+    section_name: str,
+    degree: int = 5,
+    n1: float = 0.5,
+    n2: float = 1.0,
+) -> Dict[str, Tuple[float, ...]]:
+    if section_name not in _SECTION_PAPER_TC_RANGES:
+        raise KeyError(f"Unsupported section name for paper CST bounds: {section_name}")
+
+    # Paper-compatible family:
+    # - NACA 4-digit
+    # - max camber 0% to 6%
+    # - camber position 0% to 50% chord
+    # - fifth-order CST with N1=0.5, N2=1.0
+    m_values = (0.00, 0.01, 0.02, 0.03, 0.04, 0.05, 0.06)
+    p_values = (0.10, 0.20, 0.30, 0.40, 0.50)
+    t_low, t_high = _SECTION_PAPER_TC_RANGES[section_name]
+    t_values = tuple(float(value) for value in np.linspace(t_low, t_high, 6))
+
+    x = _cosine_spacing(241)
+    upper_coeff_samples = []
+    lower_coeff_samples = []
+
+    for t_value in t_values:
+        for m_value in m_values:
+            if m_value == 0.0:
+                yu, yl = _naca4_surfaces(x, m=0.0, p=0.0, t=t_value)
+                upper, lower = _fit_cst_surface_coeffs(x, yu, yl, degree, n1, n2)
+                upper_coeff_samples.append(upper)
+                lower_coeff_samples.append(lower)
+                continue
+
+            for p_value in p_values:
+                yu, yl = _naca4_surfaces(x, m=m_value, p=p_value, t=t_value)
+                upper, lower = _fit_cst_surface_coeffs(x, yu, yl, degree, n1, n2)
+                upper_coeff_samples.append(upper)
+                lower_coeff_samples.append(lower)
+
+    upper_arr = np.asarray(upper_coeff_samples, dtype=float)
+    lower_arr = np.asarray(lower_coeff_samples, dtype=float)
+
+    upper_q10 = np.quantile(upper_arr, 0.10, axis=0)
+    upper_q90 = np.quantile(upper_arr, 0.90, axis=0)
+    lower_q10 = np.quantile(lower_arr, 0.10, axis=0)
+    lower_q90 = np.quantile(lower_arr, 0.90, axis=0)
+
+    def _halfwidth(low: np.ndarray, high: np.ndarray) -> Tuple[float, ...]:
+        span = np.maximum(high - low, 0.0)
+        floor = np.array((0.010, 0.010, 0.008, 0.008, 0.006, 0.004), dtype=float)
+        width = np.maximum(floor, 0.25 * span)
+        return tuple(float(value) for value in width)
+
+    return {
+        "upper_halfwidth": _halfwidth(upper_q10, upper_q90),
+        "lower_halfwidth": _halfwidth(lower_q10, lower_q90),
+    }
 
 
 @dataclass
@@ -136,26 +293,26 @@ class SectionedBWBDesignVariables:
     @classmethod
     def default_bounds(cls) -> Dict[str, Tuple[float, float]]:
         bounds = {
-            "span": (20.0, 60.0),
-            "b1_span_ratio": (0.10, 0.25),
-            "b2_span_ratio": (0.05, 0.25),
-            "b3_span_ratio": (0.45, 0.80),
+            "span": (35.0, 45.0),
+            "b1_span_ratio": (0.16, 0.24),
+            "b2_span_ratio": (0.09, 0.16),
+            "b3_span_ratio": (0.60, 0.75),
             "le_root_x": (-5.0, 8.0),
-            "c1_root_chord": (20.0, 60.0),
+            "c1_root_chord": (36.0, 44.0),
             "c2_c1_ratio": (0.55, 0.85),
             "c3_c1_ratio": (0.18, 0.28),
             "c4_c1_ratio": (0.06, 0.09),
             "s1_deg": (40.0, 60.0),
             "s2_deg": (40.0, 60.0),
             "s3_deg": (24.0, 40.0),
-            "nose_blend_y": (0.5, 6.0),
+            "nose_blend_y": (1.5, 4.0),
             "cst_n1": (0.45, 0.55),
             "cst_n2": (0.95, 1.10),
             "dihedral_deg": (0.0, 12.0),
-            "twist_c1_deg": (-10.0, 10.0),
-            "twist_c2_deg": (-10.0, 10.0),
-            "twist_c3_deg": (-12.0, 8.0),
-            "twist_c4_deg": (-15.0, 10.0),
+            "twist_c1_deg": (-1.0, 1.0),
+            "twist_c2_deg": (-1.5, 1.0),
+            "twist_c3_deg": (-4.0, 0.0),
+            "twist_c4_deg": (-7.0, -0.5),
             "camber_c1": (-0.03, 0.03),
             "camber_c2": (-0.03, 0.03),
             "camber_c3": (-0.03, 0.03),
@@ -174,13 +331,32 @@ class SectionedBWBDesignVariables:
             "c4_te_thickness": (0.0, 0.006),
         }
         default = cls.reference_seed()
+        paper_cst_bounds = {
+            section_name: _paper_section_cst_bounds(section_name, degree=5, n1=default.cst_n1, n2=default.cst_n2)
+            for section_name in ("c1", "c2", "c3", "c4")
+        }
         for tuple_name, tuple_size in cls._tuple_field_map().items():
             tuple_values = getattr(default, tuple_name)
             for idx in range(tuple_size):
                 key = f"{tuple_name}_{idx}"
                 reference = float(tuple_values[idx])
-                upper = max(0.45, 2.5 * reference)
-                bounds[key] = (0.0, upper)
+                tuple_lower = None
+                tuple_upper = None
+                if tuple_name.endswith("_upper_cst"):
+                    section_name = tuple_name.split("_")[0]
+                    halfwidth = paper_cst_bounds[section_name]["upper_halfwidth"][idx]
+                    tuple_lower = max(0.0, reference - halfwidth)
+                    tuple_upper = reference + halfwidth
+                elif tuple_name.endswith("_lower_cst"):
+                    section_name = tuple_name.split("_")[0]
+                    halfwidth = paper_cst_bounds[section_name]["lower_halfwidth"][idx]
+                    tuple_lower = max(0.0, reference - halfwidth)
+                    tuple_upper = reference + halfwidth
+
+                if tuple_lower is None or tuple_upper is None:
+                    bounds[key] = _cst_bound_window(reference, idx)
+                else:
+                    bounds[key] = (float(tuple_lower), float(tuple_upper))
         return bounds
 
     def as_vector(self) -> np.ndarray:
@@ -300,7 +476,11 @@ class SectionedBWBDesignVariables:
             if any(value < 0.0 for value in coeffs):
                 raise ValueError(f"{label} must be non-negative")
 
-    def to_model_config(self) -> SectionedBWBModelConfig:
+    def to_model_config(
+        self,
+        profile_generation_mode: str = "cst_only",
+        profile_relations: Optional[Tuple[SectionProfileRelationSpec, ...]] = None,
+    ) -> SectionedBWBModelConfig:
         self.validate()
         topology = SectionedBWBTopologySpec(
             span=self.span,
@@ -330,6 +510,7 @@ class SectionedBWBDesignVariables:
                 cst_degree=5,
                 n1=self.cst_n1,
                 n2=self.cst_n2,
+                profile_generation_mode=profile_generation_mode,
                 c1_spec=SectionCSTSpec(
                     upper_coeffs=self.c1_upper_cst,
                     lower_coeffs=self.c1_lower_cst,
@@ -357,6 +538,14 @@ class SectionedBWBDesignVariables:
                     tc_max=self.c4_tc_max,
                     x_tmax=self.c4_x_tmax,
                     te_thickness=self.c4_te_thickness,
+                ),
+                profile_relations=profile_relations
+                if profile_relations is not None
+                else (
+                    SectionProfileRelationSpec(),
+                    SectionProfileRelationSpec(),
+                    SectionProfileRelationSpec(),
+                    SectionProfileRelationSpec(),
                 ),
             ),
             spanwise=SpanwiseLawSpec(

@@ -8,12 +8,12 @@ REPO_ROOT = SCRIPT_DIR.parent.parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from project_v4.gemseo_space import build_gemseo_design_space
+from project_v4.gemseo_space import build_gemseo_design_space, build_gemseo_design_space_definition
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Inspect the GEMSEO design-space mapping for project_v4.")
-    parser.add_argument("--preset", default="presentation_core")
+    parser.add_argument("--preset", default="ai_geometry_core")
     return parser.parse_args()
 
 
@@ -22,7 +22,9 @@ def main() -> None:
     try:
         adapter = build_gemseo_design_space(args.preset)
     except ModuleNotFoundError as exc:
-        raise SystemExit(str(exc))
+        print(str(exc))
+        print("Falling back to the GEMSEO design-space definition only (without backend instantiation).")
+        adapter = build_gemseo_design_space_definition(args.preset)
     output_dir = SCRIPT_DIR.parent.parent / "example_outputs" / ("gemseo_design_space_%s" % args.preset)
     output_dir.mkdir(parents=True, exist_ok=True)
     json_path = output_dir / ("gemseo_design_space_%s.json" % args.preset)

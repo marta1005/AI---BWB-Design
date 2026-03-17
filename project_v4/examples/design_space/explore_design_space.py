@@ -61,6 +61,9 @@ def generate_valid_variants(
     root_tc_sequence: Optional[Tuple[float, ...]] = None,
 ) -> List[Tuple[str, SectionedBWBDesignVariables, object]]:
     design_space = build_design_space(preset, reference_design=reference_design)
+    profile_generation_mode = (
+        "enforce_targets" if "thickness_targets" in design_space.active_groups else "cst_only"
+    )
     variants: List[Tuple[str, SectionedBWBDesignVariables, object]] = []
     accepted = 0
     batch_seed = int(seed)
@@ -90,7 +93,9 @@ def generate_valid_variants(
                     c4_tc_max=float(scaled_tc[3]),
                 )
             try:
-                prepared = prepare_geometry(candidate.to_model_config())
+                prepared = prepare_geometry(
+                    candidate.to_model_config(profile_generation_mode=profile_generation_mode)
+                )
             except Exception:
                 continue
             variants.append(("v%d" % (accepted + 1), candidate, prepared))
@@ -188,21 +193,23 @@ def plot_variants(
 
         root_y = float(config.topology.y_sections_array[0])
         tip_y = float(config.topology.y_sections_array[-1])
-        yu_root, yl_root, params_root = prepared.section_model.coordinates_at_y(root_y)
-        yu_tip, yl_tip, params_tip = prepared.section_model.coordinates_at_y(tip_y)
+        yu_root, yl_root, _ = prepared.section_model.coordinates_at_y(root_y)
+        yu_tip, yl_tip, _ = prepared.section_model.coordinates_at_y(tip_y)
+        root_metrics, _ = prepared.section_model.geometry_metrics_at_y(root_y)
+        tip_metrics, _ = prepared.section_model.geometry_metrics_at_y(tip_y)
         x = prepared.section_model.x_air
 
         root_line = ax_root.plot(x, yu_root, color=color, linewidth=linewidth, alpha=alpha)[0]
         ax_root.plot(x, yl_root, color=color, linewidth=linewidth, alpha=alpha)
         if variant_id != "reference":
             root_handles.append(root_line)
-            root_labels.append(f"t/c={params_root.tc_max:.2f}")
+            root_labels.append(f"t/c={root_metrics.max_tc:.2f}")
 
         tip_line = ax_tip.plot(x, yu_tip, color=color, linewidth=linewidth, alpha=alpha)[0]
         ax_tip.plot(x, yl_tip, color=color, linewidth=linewidth, alpha=alpha)
         if variant_id != "reference":
             tip_handles.append(tip_line)
-            tip_labels.append(f"t/c={params_root.tc_max:.2f}")
+            tip_labels.append(f"t/c={tip_metrics.max_tc:.2f}")
 
     ax_planform.set_title("Design-space variants: planform overlay")
     ax_planform.set_xlabel("x / chord direction")
@@ -236,8 +243,13 @@ def main() -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
 
     reference_design = SectionedBWBDesignVariables.reference_seed()
-    reference_prepared = prepare_geometry(reference_design.to_model_config())
     design_space = build_design_space(preset, reference_design=reference_design)
+    profile_generation_mode = (
+        "enforce_targets" if "thickness_targets" in design_space.active_groups else "cst_only"
+    )
+    reference_prepared = prepare_geometry(
+        reference_design.to_model_config(profile_generation_mode=profile_generation_mode)
+    )
     sampled_variants = generate_valid_variants(
         preset=preset,
         count=args.count,

@@ -9,6 +9,26 @@ from .design_variables import SectionedBWBDesignVariables
 
 def parameter_groups() -> Dict[str, Tuple[str, ...]]:
     return {
+        "spans": (
+            "span",
+            "b1_span_ratio",
+            "b2_span_ratio",
+            "b3_span_ratio",
+        ),
+        "nose_blend": (
+            "nose_blend_y",
+        ),
+        "chords": (
+            "c1_root_chord",
+            "c2_c1_ratio",
+            "c3_c1_ratio",
+            "c4_c1_ratio",
+        ),
+        "sweeps": (
+            "s1_deg",
+            "s2_deg",
+            "s3_deg",
+        ),
         "topology": (
             "span",
             "b1_span_ratio",
@@ -79,6 +99,27 @@ def preset_groups() -> Dict[str, Tuple[str, ...]]:
         "presentation_core": ("planform", "twist", "thickness_targets"),
         "planform_only": ("topology", "planform"),
         "aero_sections": ("twist", "camber_mode", "thickness_targets"),
+        "ai_geometry_core": (
+            "spans",
+            "chords",
+            "sweeps",
+            "nose_blend",
+            "twist",
+            "cst_c1",
+            "cst_c2",
+            "cst_c3",
+            "cst_c4",
+        ),
+        "gemseo_geometry_core": (
+            "spans",
+            "chords",
+            "sweeps",
+            "twist",
+            "cst_c1",
+            "cst_c2",
+            "cst_c3",
+            "cst_c4",
+        ),
         "section_shapes": ("thickness_targets", "cst_c1", "cst_c2", "cst_c3", "cst_c4"),
         "full_geometry": (
             "topology",
@@ -518,6 +559,11 @@ def build_design_space(
 
     if reference_design is None:
         reference_design = SectionedBWBDesignVariables.reference_seed()
+    if preset_name == "gemseo_geometry_core" and abs(reference_design.dihedral_deg) > 1e-12:
+        raise ValueError(
+            "Preset 'gemseo_geometry_core' assumes dihedral_deg is fixed to 0.0, "
+            f"got {reference_design.dihedral_deg}"
+        )
 
     groups = parameter_groups()
     active_groups = presets[preset_name]
@@ -547,3 +593,11 @@ def group_for_parameter(parameter_name: str) -> str:
         if parameter_name in names:
             return group_name
     return "ungrouped"
+
+
+def preset_parameter_metadata(
+    preset_name: str,
+    reference_design: Optional[SectionedBWBDesignVariables] = None,
+) -> List[Dict[str, object]]:
+    design_space = build_design_space(preset_name, reference_design=reference_design)
+    return design_space.active_metadata()

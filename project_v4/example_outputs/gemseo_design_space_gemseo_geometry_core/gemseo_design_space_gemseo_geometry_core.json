@@ -1,0 +1,464 @@
+[
+  {
+    "gemseo_variable": "span",
+    "size": 1,
+    "project_parameters": [
+      "span"
+    ],
+    "units": "m",
+    "normalization": "absolute",
+    "description": "Half-span of the aircraft.",
+    "lower_bounds": [
+      20.0
+    ],
+    "upper_bounds": [
+      60.0
+    ],
+    "reference": [
+      39.5
+    ]
+  },
+  {
+    "gemseo_variable": "b_span_weights",
+    "size": 3,
+    "project_parameters": [
+      "b1_span_ratio",
+      "b2_span_ratio",
+      "b3_span_ratio"
+    ],
+    "units": "-",
+    "normalization": "normalized to sum 1.0 in adapter",
+    "description": "Positive topology weights mapped to B1/B2/B3 semi-span ratios.",
+    "lower_bounds": [
+      0.1,
+      0.05,
+      0.45
+    ],
+    "upper_bounds": [
+      0.25,
+      0.25,
+      0.8
+    ],
+    "reference": [
+      0.18,
+      0.12,
+      0.7
+    ]
+  },
+  {
+    "gemseo_variable": "c1_root_chord",
+    "size": 1,
+    "project_parameters": [
+      "c1_root_chord"
+    ],
+    "units": "m",
+    "normalization": "absolute",
+    "description": "Root chord.",
+    "lower_bounds": [
+      20.0
+    ],
+    "upper_bounds": [
+      60.0
+    ],
+    "reference": [
+      40.0
+    ]
+  },
+  {
+    "gemseo_variable": "chord_ratios",
+    "size": 3,
+    "project_parameters": [
+      "c2_c1_ratio",
+      "c3_c1_ratio",
+      "c4_c1_ratio"
+    ],
+    "units": "-",
+    "normalization": "ratio to C1",
+    "description": "Chord ratios of sections C2, C3 and C4.",
+    "lower_bounds": [
+      0.55,
+      0.18,
+      0.06
+    ],
+    "upper_bounds": [
+      0.85,
+      0.28,
+      0.09
+    ],
+    "reference": [
+      0.7,
+      0.23,
+      0.08
+    ]
+  },
+  {
+    "gemseo_variable": "sweeps_deg",
+    "size": 3,
+    "project_parameters": [
+      "s1_deg",
+      "s2_deg",
+      "s3_deg"
+    ],
+    "units": "deg",
+    "normalization": "angle",
+    "description": "Leading-edge sweep angles S1, S2 and S3.",
+    "lower_bounds": [
+      40.0,
+      40.0,
+      24.0
+    ],
+    "upper_bounds": [
+      60.0,
+      60.0,
+      40.0
+    ],
+    "reference": [
+      58.0,
+      50.0,
+      32.0
+    ]
+  },
+  {
+    "gemseo_variable": "twist_deg",
+    "size": 4,
+    "project_parameters": [
+      "twist_c1_deg",
+      "twist_c2_deg",
+      "twist_c3_deg",
+      "twist_c4_deg"
+    ],
+    "units": "deg",
+    "normalization": "angle",
+    "description": "Twist angles at sections C1 to C4.",
+    "lower_bounds": [
+      -10.0,
+      -10.0,
+      -12.0,
+      -15.0
+    ],
+    "upper_bounds": [
+      10.0,
+      10.0,
+      8.0,
+      10.0
+    ],
+    "reference": [
+      0.0,
+      0.0,
+      -1.0,
+      -3.0
+    ]
+  },
+  {
+    "gemseo_variable": "c1_upper_cst",
+    "size": 6,
+    "project_parameters": [
+      "c1_upper_cst_0",
+      "c1_upper_cst_1",
+      "c1_upper_cst_2",
+      "c1_upper_cst_3",
+      "c1_upper_cst_4",
+      "c1_upper_cst_5"
+    ],
+    "units": "-",
+    "normalization": "Bernstein coefficient",
+    "description": "Upper CST coefficients of section C1.",
+    "lower_bounds": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "upper_bounds": [
+      0.8764258958015556,
+      0.9084510120404552,
+      0.8326433540920959,
+      0.5094748739856642,
+      0.45,
+      0.45
+    ],
+    "reference": [
+      0.3505703583206222,
+      0.36338040481618206,
+      0.33305734163683837,
+      0.20378994959426566,
+      0.0809508165381431,
+      0.05
+    ]
+  },
+  {
+    "gemseo_variable": "c1_lower_cst",
+    "size": 6,
+    "project_parameters": [
+      "c1_lower_cst_0",
+      "c1_lower_cst_1",
+      "c1_lower_cst_2",
+      "c1_lower_cst_3",
+      "c1_lower_cst_4",
+      "c1_lower_cst_5"
+    ],
+    "units": "-",
+    "normalization": "Bernstein coefficient",
+    "description": "Lower CST coefficients of section C1.",
+    "lower_bounds": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "upper_bounds": [
+      0.45,
+      0.45,
+      0.45,
+      0.45,
+      0.45,
+      0.45
+    ],
+    "reference": [
+      0.14059830567171536,
+      0.1051800971215292,
+      0.09667355451753944,
+      0.08369594787354795,
+      0.05454716917600809,
+      0.01
+    ]
+  },
+  {
+    "gemseo_variable": "c2_upper_cst",
+    "size": 6,
+    "project_parameters": [
+      "c2_upper_cst_0",
+      "c2_upper_cst_1",
+      "c2_upper_cst_2",
+      "c2_upper_cst_3",
+      "c2_upper_cst_4",
+      "c2_upper_cst_5"
+    ],
+    "units": "-",
+    "normalization": "Bernstein coefficient",
+    "description": "Upper CST coefficients of section C2.",
+    "lower_bounds": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "upper_bounds": [
+      0.6861584629944719,
+      0.7162502928288262,
+      0.6847583669339423,
+      0.45,
+      0.45,
+      0.45
+    ],
+    "reference": [
+      0.2744633851977888,
+      0.2865001171315305,
+      0.2739033467735769,
+      0.17087353403911076,
+      0.06678622477022139,
+      0.04
+    ]
+  },
+  {
+    "gemseo_variable": "c2_lower_cst",
+    "size": 6,
+    "project_parameters": [
+      "c2_lower_cst_0",
+      "c2_lower_cst_1",
+      "c2_lower_cst_2",
+      "c2_lower_cst_3",
+      "c2_lower_cst_4",
+      "c2_lower_cst_5"
+    ],
+    "units": "-",
+    "normalization": "Bernstein coefficient",
+    "description": "Lower CST coefficients of section C2.",
+    "lower_bounds": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "upper_bounds": [
+      0.45,
+      0.45,
+      0.45,
+      0.45,
+      0.45,
+      0.45
+    ],
+    "reference": [
+      0.11778601462748521,
+      0.08738599041659881,
+      0.08074066433601852,
+      0.06999060859088185,
+      0.04467731447415471,
+      0.008
+    ]
+  },
+  {
+    "gemseo_variable": "c3_upper_cst",
+    "size": 6,
+    "project_parameters": [
+      "c3_upper_cst_0",
+      "c3_upper_cst_1",
+      "c3_upper_cst_2",
+      "c3_upper_cst_3",
+      "c3_upper_cst_4",
+      "c3_upper_cst_5"
+    ],
+    "units": "-",
+    "normalization": "Bernstein coefficient",
+    "description": "Upper CST coefficients of section C3.",
+    "lower_bounds": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "upper_bounds": [
+      0.45,
+      0.45,
+      0.45,
+      0.45,
+      0.45,
+      0.45
+    ],
+    "reference": [
+      0.1771165227729815,
+      0.1789021217118391,
+      0.17615134558387913,
+      0.11229121126131048,
+      0.04362691385861208,
+      0.025
+    ]
+  },
+  {
+    "gemseo_variable": "c3_lower_cst",
+    "size": 6,
+    "project_parameters": [
+      "c3_lower_cst_0",
+      "c3_lower_cst_1",
+      "c3_lower_cst_2",
+      "c3_lower_cst_3",
+      "c3_lower_cst_4",
+      "c3_lower_cst_5"
+    ],
+    "units": "-",
+    "normalization": "Bernstein coefficient",
+    "description": "Lower CST coefficients of section C3.",
+    "lower_bounds": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "upper_bounds": [
+      0.45,
+      0.45,
+      0.45,
+      0.45,
+      0.45,
+      0.45
+    ],
+    "reference": [
+      0.07794960349971847,
+      0.05477434654250904,
+      0.04979025827470704,
+      0.04405080606494915,
+      0.027903031526270303,
+      0.005
+    ]
+  },
+  {
+    "gemseo_variable": "c4_upper_cst",
+    "size": 6,
+    "project_parameters": [
+      "c4_upper_cst_0",
+      "c4_upper_cst_1",
+      "c4_upper_cst_2",
+      "c4_upper_cst_3",
+      "c4_upper_cst_4",
+      "c4_upper_cst_5"
+    ],
+    "units": "-",
+    "normalization": "Bernstein coefficient",
+    "description": "Upper CST coefficients of section C4.",
+    "lower_bounds": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "upper_bounds": [
+      0.45,
+      0.45,
+      0.45,
+      0.45,
+      0.45,
+      0.45
+    ],
+    "reference": [
+      0.13204052603737756,
+      0.131982607124543,
+      0.13661581920678875,
+      0.0896436179309724,
+      0.03422887345723429,
+      0.018
+    ]
+  },
+  {
+    "gemseo_variable": "c4_lower_cst",
+    "size": 6,
+    "project_parameters": [
+      "c4_lower_cst_0",
+      "c4_lower_cst_1",
+      "c4_lower_cst_2",
+      "c4_lower_cst_3",
+      "c4_lower_cst_4",
+      "c4_lower_cst_5"
+    ],
+    "units": "-",
+    "normalization": "Bernstein coefficient",
+    "description": "Lower CST coefficients of section C4.",
+    "lower_bounds": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "upper_bounds": [
+      0.45,
+      0.45,
+      0.45,
+      0.45,
+      0.45,
+      0.45
+    ],
+    "reference": [
+      0.056010425731014404,
+      0.036736910979084256,
+      0.03137859227072081,
+      0.028562744974141473,
+      0.019164856377254798,
+      0.003
+    ]
+  }
+]

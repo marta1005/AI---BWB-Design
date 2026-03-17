@@ -14,6 +14,7 @@ from .validation import (
     validate_loft_definition,
     validate_section_geometry,
 )
+from .volume import VolumeConstraintSummary, evaluate_volume_constraint
 
 
 @dataclass
@@ -23,6 +24,7 @@ class PreparedGeometry:
     spanwise_laws: ResolvedSpanwiseLaws
     loft: LoftDefinition
     validation: ValidationSummary
+    volume: VolumeConstraintSummary
 
 
 def build_span_stations(config: SectionedBWBModelConfig) -> np.ndarray:
@@ -66,12 +68,21 @@ def prepare_geometry(config: SectionedBWBModelConfig) -> PreparedGeometry:
     validate_loft_definition(loft)
     validation_stations = build_validation_stations(config.topology, loft)
     validation = validate_section_geometry(section_model, validation_stations)
+    volume = evaluate_volume_constraint(config, planform, section_model)
+    if config.volume.enforce_hard and not volume.satisfied:
+        raise ValueError(
+            "Volume constraint violated: "
+            f"volume={volume.enclosed_volume_m3:.3f} m^3, "
+            f"required={volume.required_volume_m3:.3f} m^3, "
+            f"margin={volume.volume_margin_m3:.3f} m^3"
+        )
     return PreparedGeometry(
         planform=planform,
         section_model=section_model,
         spanwise_laws=laws,
         loft=loft,
         validation=validation,
+        volume=volume,
     )
 
 
@@ -101,4 +112,10 @@ def export_iges(config: SectionedBWBModelConfig) -> PreparedGeometry:
         f"x/c={prepared.validation.min_inner_tc_xc:.6f} "
         f"over {prepared.validation.num_samples} samples"
     )
+    if prepared.volume.enabled:
+        print(
+            "Volume constraint: "
+            f"satisfied={prepared.volume.satisfied} | "
+            f"V={prepared.volume.enclosed_volume_m3:.2f}/{prepared.volume.required_volume_m3:.2f} m^3"
+        )
     return prepared
