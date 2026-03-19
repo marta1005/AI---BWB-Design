@@ -2,7 +2,9 @@ __pycache__/
 *.pyc
 .DS_Store
 .mplconfig/fontlist-v*.json
-CTA/example_outputs/
+CTA/example_outputs/*
+!CTA/example_outputs/reference/
+!CTA/example_outputs/reference/**
 aircraft/.mplconfig/
 aircraft/example_outputs/*
 !aircraft/example_outputs/cta_planform_match/
