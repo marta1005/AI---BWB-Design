@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+.DS_Store
+.mplconfig/fontlist-v*.json
+CTA/example_outputs/
+aircraft/.mplconfig/
+aircraft/example_outputs/
