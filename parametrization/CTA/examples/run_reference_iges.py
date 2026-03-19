@@ -10,7 +10,7 @@ if str(REPO_ROOT) not in sys.path:
 os.environ.setdefault("MPLCONFIGDIR", str(SCRIPT_DIR.parent.parent / ".mplconfig"))
 
 from parametrization.CTA.reference import build_reference_design, to_cta_model_config
-from parametrization.core.builder import export_iges
+from parametrization.bwb.builder import export_iges
 
 
 def main() -> None:

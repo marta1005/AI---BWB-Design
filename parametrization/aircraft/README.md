@@ -1,8 +1,12 @@
 # Wing Parametrization
 
-This folder contains the generic aircraft geometry package. At this stage, the
-wing workflow is the most mature part of the package, and this document focuses
-on how a wing is defined, parameterized, built, and exported.
+This folder contains the generic aircraft geometry package. It depends on
+`parametrization/shared` for reusable CST/dependency helpers, but it does not
+depend on the BWB/CTA-specific package.
+
+At this stage, the wing workflow is the most mature part of the package, and
+this document focuses on how a wing is defined, parameterized, built, and
+exported.
 
 The core design goal is:
 

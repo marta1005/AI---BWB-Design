@@ -22,8 +22,8 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-from parametrization.core.cst_sharedle import KulfanCSTAirfoil, cosine_spacing
-from parametrization.core.design_variables import SectionedBWBDesignVariables
+from parametrization.shared.cst import KulfanCSTAirfoil, cosine_spacing
+from parametrization.bwb.design_variables import SectionedBWBDesignVariables
 
 
 SECTION_KEYS: Dict[str, Tuple[str, str, str, str, str]] = {

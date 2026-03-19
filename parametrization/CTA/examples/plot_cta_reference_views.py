@@ -21,7 +21,7 @@ import matplotlib.patheffects as pe
 from matplotlib.patches import Arc
 
 from parametrization.CTA.reference import build_reference_design, to_cta_model_config
-from parametrization.core.builder import prepare_geometry
+from parametrization.bwb.builder import prepare_geometry
 
 
 def save_figure(fig, path: Path, **kwargs) -> None:

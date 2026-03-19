@@ -3,8 +3,8 @@
 from dataclasses import asdict
 from typing import Dict, List, Optional, Tuple
 
-from parametrization.core.design_space import DesignSpace, parameter_info
-from parametrization.core.design_variables import SectionedBWBDesignVariables
+from parametrization.bwb.design_space import DesignSpace, parameter_info
+from parametrization.bwb.design_variables import SectionedBWBDesignVariables
 
 from .reference import (
     SWEEP_NAME_TO_VARIABLE,

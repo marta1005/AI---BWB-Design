@@ -1,8 +1,10 @@
 # CTA Parametrization Package
 
-This folder contains the CTA-only parametrization and design-space setup on top of `parametrization/core`.
+This folder contains the CTA-only parametrization and design-space setup on top of
+`parametrization/bwb`.
 
-- Shared geometry core: `parametrization/core/`
+- Shared utilities: `parametrization/shared/`
+- Generic BWB layer used by CTA: `parametrization/bwb/`
 - Core reference adapters: `parametrization/CTA/reference.py`
 - CTA AI design-space (fixed + variable split): `parametrization/CTA/design_space.py`
 - Docs: `parametrization/CTA/docs/README.md`

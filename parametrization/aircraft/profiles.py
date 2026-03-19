@@ -6,7 +6,7 @@ from typing import Dict, Tuple
 
 import numpy as np
 
-from parametrization.core.cst_sharedle import KulfanCSTAirfoil, cosine_spacing
+from parametrization.shared.cst import KulfanCSTAirfoil, cosine_spacing
 
 
 @dataclass(frozen=True)

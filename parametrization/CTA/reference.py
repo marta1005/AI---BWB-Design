@@ -1,10 +1,10 @@
-"""Reference CTA parametrization built on top of the local core package."""
+"""Reference CTA parametrization built on top of the local BWB package."""
 
 from dataclasses import replace
 from typing import Dict, Optional, Tuple
 
-from parametrization.core.design_variables import SectionedBWBDesignVariables
-from parametrization.core.specs import SectionedBWBModelConfig
+from parametrization.bwb.design_variables import SectionedBWBDesignVariables
+from parametrization.bwb.specs import SectionedBWBModelConfig
 
 # Requested sweep renaming for the CTA package:
 # - legacy S1 -> S (fixed)

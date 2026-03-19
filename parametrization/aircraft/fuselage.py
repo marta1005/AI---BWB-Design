@@ -7,7 +7,7 @@ from typing import Callable, Dict, Sequence, Tuple
 import numpy as np
 from scipy.interpolate import CubicSpline
 
-from parametrization.core.dependency_setup import (
+from parametrization.shared.dependency_setup import (
     ensure_local_dependency_paths,
     load_pygeo_class,
     load_pyspline_curve,

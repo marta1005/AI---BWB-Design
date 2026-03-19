@@ -24,7 +24,7 @@ from parametrization.aircraft import (
     WingSpec,
     WingStationSpec,
 )
-from parametrization.core.planform import build_sectioned_bwb_planform
+from parametrization.bwb.planform import build_sectioned_bwb_planform
 
 
 @dataclass(frozen=True)

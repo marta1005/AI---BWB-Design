@@ -7,9 +7,9 @@ from typing import Callable, Iterable, Sequence
 import numpy as np
 from scipy.interpolate import CubicSpline
 
-from parametrization.core.airfoil_io import write_airfoil_dat
-from parametrization.core.cst_sharedle import KulfanCSTAirfoil, cosine_spacing
-from parametrization.core.dependency_setup import (
+from parametrization.shared.airfoil_io import write_airfoil_dat
+from parametrization.shared.cst import KulfanCSTAirfoil, cosine_spacing
+from parametrization.shared.dependency_setup import (
     ensure_local_dependency_paths,
     load_pygeo_class,
     load_pyspline_curve,

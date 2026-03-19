@@ -1,6 +1,10 @@
 # CTA Parametrization (`parametrization/CTA`)
 
-This package isolates the CTA-focused BWB parametrization on top of `parametrization/core` so the next step (global aircraft parametrization with fuselage, VTP, additional sections, etc.) can be developed in parallel without mixing concerns.
+This package isolates the CTA-focused BWB parametrization on top of
+`parametrization/bwb`, with reusable low-level helpers living in
+`parametrization/shared`, so the next step (global aircraft parametrization with
+fuselage, VTP, additional sections, etc.) can be developed in parallel without
+mixing concerns.
 
 ## Sweep Naming
 
