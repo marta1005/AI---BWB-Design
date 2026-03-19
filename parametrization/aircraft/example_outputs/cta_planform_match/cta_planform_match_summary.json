@@ -1,0 +1,9 @@
+{
+  "span_m": 39.5,
+  "sample_station_count": 273,
+  "max_le_error_m": 0.014257835140153219,
+  "max_te_error_m": 0.026649624248641146,
+  "max_chord_error_m": 0.026649624248641146,
+  "reference_polyline_le_error_m": 0.014257835138419495,
+  "reference_polyline_te_error_m": 0.02664962423200734
+}

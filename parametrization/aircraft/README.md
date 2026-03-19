@@ -520,10 +520,17 @@ The current example scripts for the wing workflow are:
   - generates top, side, front, and 3D wing plots
 - `python parametrization/aircraft/examples/plot_demo_wing_transition_comparison.py`
   - compares the same wing with `C1` and `C2` segmented transitions
+- `python parametrization/aircraft/examples/plot_cta_planform_match_views.py`
+  - builds an `aircraft` wing whose planform matches the CTA reference and
+    writes comparison plots plus a planform-match summary
+- `python parametrization/aircraft/examples/run_cta_planform_match_iges.py`
+  - exports the CTA-like wing as IGES using a lighter station grid for
+    practical export time
 
 Generated outputs are written to:
 
 - `parametrization/aircraft/example_outputs/demo_main_wing/`
+- `parametrization/aircraft/example_outputs/cta_planform_match/`
 
 ## 10. Current Scope and Limitations
 

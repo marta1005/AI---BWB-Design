@@ -4,4 +4,10 @@ __pycache__/
 .mplconfig/fontlist-v*.json
 CTA/example_outputs/
 aircraft/.mplconfig/
-aircraft/example_outputs/
+aircraft/example_outputs/*
+!aircraft/example_outputs/cta_planform_match/
+aircraft/example_outputs/cta_planform_match/profiles/
+!aircraft/example_outputs/cta_planform_match/*.igs
+!aircraft/example_outputs/cta_planform_match/*.png
+!aircraft/example_outputs/cta_planform_match/*.svg
+!aircraft/example_outputs/cta_planform_match/*.json
