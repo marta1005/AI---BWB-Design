@@ -5,6 +5,4 @@ Package layout:
 - ``parametrization.bwb``: generic sectioned BWB tools used by CTA
 - ``parametrization.CTA``: CTA-specific reference design and docs
 - ``parametrization.aircraft``: generic whole-aircraft building blocks
-
-``parametrization.core`` remains as a compatibility layer for older imports.
 """

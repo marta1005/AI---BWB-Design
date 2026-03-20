@@ -26,13 +26,15 @@ def main() -> None:
     wing = build_demo_wing()
     component = wing.to_component_spec()
     output_dir = default_output_dir()
+    profile_etas = tuple(float(station.eta) for station in wing.stations)
 
     prepared = prepare_lifting_surface(component, profiles, options=default_build_options())
-    views_png, views_svg = save_lifting_surface_overview(
+    views_png = save_lifting_surface_overview(
         prepared,
         output_dir,
         stem=component.component_id,
         title="Demo main wing",
+        profile_station_etas=profile_etas,
     )
     view3d_png = save_lifting_surface_3d(
         prepared,
@@ -42,7 +44,6 @@ def main() -> None:
     )
 
     print(f"Views PNG written to: {views_png}")
-    print(f"Views SVG written to: {views_svg}")
     print(f"3D PNG written to: {view3d_png}")
 
 

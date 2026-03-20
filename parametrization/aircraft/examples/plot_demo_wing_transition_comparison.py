@@ -30,14 +30,14 @@ def main() -> None:
         component = wing.to_component_spec()
         prepared = prepare_lifting_surface(component, profiles, options=default_build_options())
         stem = f"{component.component_id}_transition_c{int(continuity)}"
-        views_png, views_svg = save_lifting_surface_overview(
+        views_png = save_lifting_surface_overview(
             prepared,
             output_dir,
             stem=stem,
             title=f"Demo main wing | segmented C{int(continuity)} transition",
+            profile_station_etas=tuple(float(station.eta) for station in wing.stations),
         )
         print(f"C{int(continuity)} PNG written to: {views_png}")
-        print(f"C{int(continuity)} SVG written to: {views_svg}")
 
 
 if __name__ == "__main__":

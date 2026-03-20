@@ -14,20 +14,17 @@ parametrizations.
   Generic sectioned blended-wing-body tooling.
   This is the home of the planform, design variables, topology, validation,
   exporters, and geometry builder used by CTA and any future BWB variants.
+  CTA-specific BWB geometry, including nose and centerbody logic, belongs here.
 
 - `parametrization/CTA`
   CTA-specific presets, examples, docs, and reference outputs.
   CTA depends on `parametrization.bwb`, not on `aircraft`.
 
 - `parametrization/aircraft`
-  Generic whole-aircraft building blocks.
+  Generic conventional-aircraft building blocks.
   This package uses only `parametrization.shared` helpers plus its own local
-  wing/fuselage/component logic.
-
-- `parametrization/core`
-  Backward-compatible import shim.
-  Existing scripts can still import `parametrization.core.*`, but new code should
-  use `parametrization.shared.*` or `parametrization.bwb.*` directly.
+  wing/fuselage/component logic. It is not the place for CTA/BWB-specific
+  centerbody reconstruction.
 
 ## Rule Of Thumb
 

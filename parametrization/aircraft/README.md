@@ -1,75 +1,98 @@
-# Wing Parametrization
+# Aircraft Parametrization
 
-This folder contains the generic aircraft geometry package. It depends on
-`parametrization/shared` for reusable CST/dependency helpers, but it does not
-depend on the BWB/CTA-specific package.
+`parametrization/aircraft` is the generic conventional-aircraft geometry
+package. It depends on `parametrization/shared` for reusable CST and dependency
+helpers, but it does not depend on `parametrization/bwb` or
+`parametrization/CTA`.
 
-At this stage, the wing workflow is the most mature part of the package, and
-this document focuses on how a wing is defined, parameterized, built, and
-exported.
+This package is for section-based wings, tails, fuselages, and simple aircraft
+assembly. CTA itself should be modeled in `parametrization/bwb`, because CTA is
+a BWB and needs centerbody and nose logic that does not belong here.
 
-The core design goal is:
+## Current Scope
 
-- keep the wing definition intuitive for aircraft design work
-- allow different wing layouts, not only one CTA-like geometry
-- keep spanwise segments constructively straight when needed
-- make the transition around interior stations smooth with either `C1` or `C2`
-- avoid a global spline bending the whole wing unless the user explicitly wants
-  that behavior
+The package currently contains:
 
-## Geometry Convention
+- `profiles.py`
+  Airfoil profile definitions based on CST, iCST, and an intuitive iCST wrapper.
+- `laws.py`
+  Spanwise interpolation and scalar-law definitions.
+- `sections.py`
+  Generic section placement data structures.
+- `lifting_surface.py`
+  Generic lifting-surface preparation, section sampling, and IGES export.
+- `wing.py`
+  High-level wing API built from section definitions.
+- `wing_designer.py`
+  Higher-level wing designer API built on top of `WingSpec`.
+- `vertical_tail.py`
+  High-level vertical-tail wrapper built on the same lifting-surface engine.
+- `fuselage.py`
+  Section-based fuselage definition and export.
+- `aircraft.py`
+  Lightweight whole-aircraft assembly of wings, tails, and fuselages.
+- `plotting.py`
+  2D and 3D plotting utilities for the prepared geometries.
 
-Global axes:
+## What You Can Define Right Now
 
-- `x`: streamwise / longitudinal
-- `y`: vertical
-- `z`: spanwise / lateral
+### Wings
 
-Wing span parameter:
+The wing workflow is the most mature part of the package.
 
-- `eta = 0.0` at the wing root
-- `eta = 1.0` at the wing tip
+There are two wing APIs:
 
-The current high-level wing API defines one physical semi-span. A mirrored full
-wing can be assembled later at aircraft level.
-
-## Wing Definition Stack
-
-A wing is built in five layers:
-
-1. Define airfoil profiles.
-2. Define wing stations.
-3. Define spanwise interpolation behavior.
-4. Optionally define scalar spanwise laws.
-5. Build the lifting surface and export geometry or plots.
-
-The main classes involved are:
-
-- `IntuitiveAirfoilProfileSpec`
-- `ProfileCatalog`
-- `WingStationSpec`
+- `WingDesignerSpec`
+  Recommended user-facing API for aircraft design work.
 - `WingSpec`
-- `InterpolationSpec`
-- `ScalarLawSpec`
-- `LiftingSurfaceBuildOptions`
+  Lower-level API when you want direct control of the resolved section geometry.
 
-## 1. Airfoil Profiles
+Right now you can define:
 
-Wing sections are identified by `profile_id`. The recommended profile input is
-`IntuitiveAirfoilProfileSpec`, which internally resolves to the iCST-based CST
-representation used by the geometry engine.
+- an arbitrary number of physical wing sections
+- a different airfoil profile at each section
+- local chord, twist, pitch, roll, and thickness scale per section
+- leading-edge position section by section
+- wing vertical position section by section
+- either absolute section placement or incremental sweep/dihedral placement
+- hard transitions, local `C1` transitions, or local `C2` transitions between sections
+- a globally curved spanwise spline only when you explicitly request it
 
-### Recommended Profile Parameters
+The intended workflow is section-based, not point-by-point reconstruction.
 
-Required:
+Use:
 
-- `profile_id`
+- `WingDesignerSpec`
+  Define a wing from global quantities such as `span`, `root_chord`, root
+  placement, section chord ratios, quarter-chord sweep, and dihedral.
+- `WingStationDesignerSpec`
+  Define designer-facing stations such as `root`, `kink`, and `tip`.
+- `WingTransitionSpec`
+  Define the transition behavior between sections.
+- `WingSpanStationSpec`
+  Define sections with physical `span_position`, `x_le`, `vertical_y`, `chord`,
+  `twist_deg`, `pitch_deg`, `roll_deg`, and `profile_id`.
+- `WingSpec.from_span_sections(...)`
+  Build a low-level wing from those physical sections.
+- `WingStationSpec`
+  Use this lower-level form if you prefer normalized `eta` stations and direct
+  absolute geometry control.
+
+### Airfoil Profiles
+
+For wing and tail sections you can currently define:
+
+- direct CST profiles with `CSTAirfoilProfileSpec`
+- iCST-constrained profiles with `ICSTAirfoilProfileSpec`
+- intuitive iCST profiles with `IntuitiveAirfoilProfileSpec`
+
+The recommended user-facing option is `IntuitiveAirfoilProfileSpec`.
+
+Typical profile inputs are:
+
 - `leading_edge_radius`
 - `max_thickness`
 - `x_tmax`
-
-Common optional parameters:
-
 - `max_camber`
 - `x_cmax`
 - `trailing_edge_wedge_angle_deg`
@@ -77,224 +100,21 @@ Common optional parameters:
 - `aft_control_x`
 - `te_thickness`
 
-### Example
+### Spanwise Transitions
 
-```python
-IntuitiveAirfoilProfileSpec(
-    profile_id="root_airfoil",
-    leading_edge_radius=0.018,
-    max_thickness=0.145,
-    x_tmax=0.34,
-    max_camber=0.024,
-    x_cmax=0.44,
-    trailing_edge_wedge_angle_deg=13.5,
-    trailing_edge_camber_angle_deg=-0.8,
-    aft_control_x=0.74,
-    te_thickness=0.0018,
-)
-```
+Spanwise behavior is controlled with `InterpolationSpec`.
 
-All profiles used by the wing are stored in a `ProfileCatalog`.
+Supported methods:
 
-## 2. Wing Stations
+- `InterpolationMethod.LINEAR`
+  Hard piecewise-linear transitions.
+- `InterpolationMethod.SEGMENTED`
+  Straight spanwise segments with only a local smooth transition around the
+  interior stations.
+- `InterpolationMethod.PYSPLINE`
+  Globally curved interpolation.
 
-`WingStationSpec` defines each anchor section of the wing.
-
-Each station describes:
-
-- where the section is along the span
-- which profile it uses
-- the local chord
-- the local orientation
-- and optionally the local placement rule
-
-### Required `WingStationSpec` Parameters
-
-| Parameter | Meaning |
-| --- | --- |
-| `station_id` | Unique name of the station |
-| `eta` | Normalized span location in `[0, 1]` |
-| `profile_id` | Airfoil profile used at the station |
-| `chord` | Local chord length |
-
-### Common Optional `WingStationSpec` Parameters
-
-| Parameter | Meaning |
-| --- | --- |
-| `twist_deg` | Local geometric twist |
-| `pitch_deg` | Additional pitch rotation |
-| `roll_deg` | Additional roll rotation |
-| `thickness_scale` | Multiplicative thickness scale |
-| `x_le` | Absolute leading-edge `x` position |
-| `vertical_y` | Absolute vertical `y` position |
-| `sweep_le_deg` | Segment sweep from previous station |
-| `dihedral_deg` | Segment dihedral from previous station |
-
-### Placement Rule
-
-For each non-root station, use one of these approaches:
-
-- absolute placement:
-  - `x_le`
-  - `vertical_y`
-- segment-based placement:
-  - `sweep_le_deg`
-  - `dihedral_deg`
-
-Do not mix the absolute and segment-based versions of the same quantity on the
-same station.
-
-### Station Rules
-
-- the first station must be at `eta = 0.0`
-- the last station must be at `eta = 1.0`
-- the root station position is controlled by `WingSpec.root_x`,
-  `WingSpec.root_y`, and `WingSpec.root_z`
-- wing stations must be strictly increasing in `eta`
-
-### Example
-
-```python
-stations = (
-    WingStationSpec(
-        station_id="root",
-        eta=0.0,
-        profile_id="root_airfoil",
-        chord=6.2,
-        twist_deg=2.5,
-    ),
-    WingStationSpec(
-        station_id="kink",
-        eta=0.38,
-        profile_id="kink_airfoil",
-        chord=4.0,
-        twist_deg=0.8,
-        sweep_le_deg=20.0,
-        dihedral_deg=3.5,
-    ),
-    WingStationSpec(
-        station_id="tip",
-        eta=1.0,
-        profile_id="tip_airfoil",
-        chord=1.55,
-        twist_deg=-2.4,
-        sweep_le_deg=29.0,
-        dihedral_deg=5.5,
-    ),
-)
-```
-
-## 3. `WingSpec`: The High-Level Wing Object
-
-`WingSpec` gathers the whole wing definition.
-
-### `WingSpec` Parameters
-
-| Parameter | Meaning |
-| --- | --- |
-| `wing_id` | Wing identifier |
-| `semispan` | Semi-span length |
-| `stations` | Tuple of `WingStationSpec` anchor sections |
-| `root_x` | Root leading-edge `x` reference |
-| `root_y` | Root vertical position |
-| `root_z` | Root spanwise position |
-| `section_interpolation` | How the airfoil family changes between stations |
-| `spine_interpolation` | How planform-like quantities evolve along the span |
-| `scalar_laws` | Optional user-defined spanwise laws |
-| `mirrored` | Reserved field for future symmetry handling |
-| `metadata` | Free-form descriptive metadata |
-
-### What `spine_interpolation` Controls
-
-`spine_interpolation` drives the spanwise evolution of:
-
-- `x`
-- `y`
-- `z`
-- `chord`
-- `twist_deg`
-- `pitch_deg`
-- `roll_deg`
-- `thickness_scale`
-
-### What `section_interpolation` Controls
-
-`section_interpolation` drives the transition of the airfoil family itself,
-which means the resolved iCST/CST profile coefficients and trailing-edge
-thickness values.
-
-## 4. Interpolation Modes
-
-Interpolation is defined with `InterpolationSpec`.
-
-### `InterpolationSpec` Parameters
-
-| Parameter | Meaning |
-| --- | --- |
-| `method` | Interpolation method |
-| `continuity` | Requested continuity order |
-| `blend_fraction` | Local transition width for segmented interpolation |
-
-### Available Methods
-
-#### `InterpolationMethod.LINEAR`
-
-Use this when you want a true hard break between stations.
-
-Behavior:
-
-- piecewise linear
-- no local smoothing
-- good for intentionally sharp kinks
-
-#### `InterpolationMethod.SEGMENTED`
-
-This is the recommended mode for conventional aircraft wings.
-
-Behavior:
-
-- each spanwise segment stays straight away from the station transitions
-- only a local window around each interior station is smoothed
-- the user chooses whether that local blend is `C1` or `C2`
-- the whole wing does not become a global spline
-
-This is the key mode for constructible wings with root-kink-tip style layouts.
-
-#### `InterpolationMethod.PYSPLINE`
-
-Use this only when you explicitly want a globally curved spanwise evolution.
-
-Behavior:
-
-- global spline through all anchor stations
-- useful for intentionally smooth and curved planforms
-- not recommended for standard panel-like wings unless the geometry truly
-  requires it
-
-### Continuity Choice for `SEGMENTED`
-
-- `ContinuityOrder.C1`
-  - tangent-continuous local transition
-- `ContinuityOrder.C2`
-  - curvature-continuous local transition
-
-### `blend_fraction`
-
-`blend_fraction` defines the local transition half-width around each interior
-station as a fraction of the neighboring span segment.
-
-Practical interpretation:
-
-- smaller values keep the straight segment dominant and make the transition more
-  localized
-- larger values spread the transition over a wider neighborhood
-
-Typical starting values:
-
-- `0.10` to `0.16` for tighter local transitions
-- `0.16` to `0.22` for smoother and broader transitions
-
-### Recommended Default for Aircraft Wings
+For conventional wings, the recommended default is:
 
 ```python
 InterpolationSpec(
@@ -304,17 +124,17 @@ InterpolationSpec(
 )
 ```
 
-## 5. Optional Scalar Laws
+That means:
 
-`ScalarLawSpec` lets the user override specific spanwise quantities explicitly.
+- the wing stays straight between sections
+- only the neighborhood of the section junction is blended
+- the user chooses whether the local blend is `C1` or `C2`
 
-This is useful when:
+### Scalar Laws
 
-- station values are not enough
-- you want direct control of twist or thickness evolution
-- you want a law with a different interpolation behavior than the main spine
+You can override spanwise laws explicitly with `ScalarLawSpec`.
 
-Supported wing scalar laws are:
+Supported scalar-law names for lifting surfaces are:
 
 - `x`
 - `y`
@@ -326,39 +146,67 @@ Supported wing scalar laws are:
 - `thickness_scale`
 - `te_thickness`
 
-### Example: Twist Law
+### Vertical Tails
 
-```python
-ScalarLawSpec(
-    name="twist_deg",
-    anchors=(
-        ScalarLawAnchor(0.0, 2.5),
-        ScalarLawAnchor(0.38, 0.8),
-        ScalarLawAnchor(1.0, -2.4),
-    ),
-    interpolation=InterpolationSpec(
-        method=InterpolationMethod.SEGMENTED,
-        continuity=ContinuityOrder.C2,
-        blend_fraction=0.16,
-    ),
-)
-```
+`VerticalTailSpec` is available and uses the same lifting-surface machinery.
 
-## 6. Complete Wing Example
+At the moment it is best understood as a wrapper around the generic lifting
+surface builder, not a fully separate vertical-tail design language.
+
+### Fuselages
+
+`FuselageSpec` currently supports section-based fuselage definition using
+closed superellipse-like sections.
+
+Right now you can define:
+
+- section position along the body
+- width and height of each section
+- section center offsets
+- top, bottom, and side shape exponents
+
+This is good for generic transport-style fuselages, but it is still a simple
+body model.
+
+### Aircraft Assembly
+
+`AircraftAssemblySpec` can assemble:
+
+- wings
+- vertical tails
+- fuselages
+
+This is currently a geometry-organization and plotting/export layer. It is not
+yet a watertight multi-body CAD assembly with boolean trimming or true fairings.
+
+### Outputs
+
+The package can currently generate:
+
+- section `.dat` files
+- lifting-surface `.igs` exports
+- fuselage `.igs` exports
+- 2D overview figures
+- 3D figures
+
+## Recommended Wing Workflow
+
+1. Define a profile catalog.
+2. Define a compact set of designer stations such as `root`, `kink`, and `tip`.
+3. Choose a transition mode.
+4. Convert the designer wing into a `WingSpec`.
+5. Export `.igs` or generate plots.
+
+### Minimal Wing Example
 
 ```python
 from parametrization.aircraft import (
     ContinuityOrder,
-    InterpolationMethod,
-    InterpolationSpec,
     IntuitiveAirfoilProfileSpec,
-    LiftingSurfaceBuildOptions,
     ProfileCatalog,
-    ScalarLawAnchor,
-    ScalarLawSpec,
-    WingSpec,
-    WingStationSpec,
-    export_lifting_surface_iges,
+    WingDesignerSpec,
+    WingStationDesignerSpec,
+    WingTransitionSpec,
 )
 
 profiles = ProfileCatalog(
@@ -372,14 +220,6 @@ profiles = ProfileCatalog(
             x_cmax=0.44,
         ),
         IntuitiveAirfoilProfileSpec(
-            profile_id="kink_airfoil",
-            leading_edge_radius=0.013,
-            max_thickness=0.118,
-            x_tmax=0.32,
-            max_camber=0.016,
-            x_cmax=0.41,
-        ),
-        IntuitiveAirfoilProfileSpec(
             profile_id="tip_airfoil",
             leading_edge_radius=0.008,
             max_thickness=0.090,
@@ -390,189 +230,176 @@ profiles = ProfileCatalog(
     )
 )
 
-segmented_c2 = InterpolationSpec(
-    method=InterpolationMethod.SEGMENTED,
+segmented_c2 = WingTransitionSpec(
     continuity=ContinuityOrder.C2,
-    blend_fraction=0.16,
+    blend_fraction=0.18,
 )
 
-wing = WingSpec(
+wing = WingDesignerSpec(
     wing_id="main_wing",
-    semispan=14.5,
+    span=29.0,
+    root_chord=6.2,
+    symmetric=True,
+    root_le_x=8.35,
+    root_vertical_y=0.10,
     stations=(
-        WingStationSpec("root", 0.0, "root_airfoil", chord=6.2, twist_deg=2.5),
-        WingStationSpec(
-            "kink",
-            0.38,
-            "kink_airfoil",
-            chord=4.0,
-            twist_deg=0.8,
-            sweep_le_deg=20.0,
-            dihedral_deg=3.5,
+        WingStationDesignerSpec(
+            station_id="root",
+            profile_id="root_airfoil",
+            eta=0.0,
+            chord_ratio=1.0,
+            twist_deg=2.5,
         ),
-        WingStationSpec(
-            "tip",
-            1.0,
-            "tip_airfoil",
-            chord=1.55,
+        WingStationDesignerSpec(
+            station_id="tip",
+            profile_id="tip_airfoil",
+            eta=1.0,
+            chord_ratio=1.55 / 6.2,
             twist_deg=-2.4,
-            sweep_le_deg=29.0,
+            sweep_qc_deg=25.9,
             dihedral_deg=5.5,
         ),
     ),
-    root_x=8.35,
-    root_y=0.10,
-    root_z=0.0,
-    section_interpolation=segmented_c2,
-    spine_interpolation=segmented_c2,
-    scalar_laws=(
-        ScalarLawSpec(
-            name="twist_deg",
-            anchors=(
-                ScalarLawAnchor(0.0, 2.5),
-                ScalarLawAnchor(0.38, 0.8),
-                ScalarLawAnchor(1.0, -2.4),
-            ),
-            interpolation=segmented_c2,
-        ),
-    ),
+    section_transition=segmented_c2,
+    spine_transition=segmented_c2,
 )
 
-result = export_lifting_surface_iges(
-    wing.to_component_spec(),
-    profiles,
-    out_dir="parametrization/aircraft/example_outputs/my_wing",
-    options=LiftingSurfaceBuildOptions(
-        station_count=13,
-        include_anchor_sections=True,
-        airfoil_sample_count=301,
-        blunt_te=True,
-        tip_style="rounded",
-    ),
-)
+wing_spec = wing.to_wing_spec()
 ```
 
-## 7. Build and Export Options
+If `symmetric=True`, `span` is interpreted as the full wingspan. Internally,
+`to_wing_spec()` still produces the half-wing representation used by the
+current wing builder. Use `to_full_span_component_spec()` when you want a full
+mirrored wing component directly. If `symmetric=False`, `span` is interpreted
+as the physical span of the single lifting surface you are defining.
 
-The lifting-surface builder uses `LiftingSurfaceBuildOptions`.
+## Wing Parameters You Can Define Right Now
 
-### Main Parameters
+### Per Designer Wing
 
-| Parameter | Meaning |
-| --- | --- |
-| `station_count` | Number of generated spanwise stations |
-| `station_etas` | Optional explicit station grid |
-| `include_anchor_sections` | Force anchor stations into the build grid |
-| `airfoil_sample_count` | Number of points used to sample each airfoil |
-| `fit_n_ctl` | Optional pyGeo fitting control count |
-| `k_span` | Optional spanwise spline order for pyGeo fitting |
-| `tip_style` | `"rounded"` or `"pinched"` |
-| `blunt_te` | Export blunt trailing edge |
-| `rounded_te` | Use rounded trailing edge when blunt trailing edge is enabled |
+- `wing_id`
+- `span`
+- `symmetric`
+- `root_chord`
+- `root_le_x`
+- `root_vertical_y`
+- `root_z`
+- `spine_transition`
+- `section_transition`
+- `scalar_laws`
+- `metadata`
 
-### Notes
+### Per Designer Station
 
-- if you use `SEGMENTED`, the builder automatically inserts extra support
-  stations around interior wing breaks so the local `C1` or `C2` transition is
-  actually represented in the loft
-- you do not need to manually add those extra stations yourself
+- `station_id`
+- `eta`
+- `profile_id`
+- `chord_ratio`
+- `twist_deg`
+- `pitch_deg`
+- `roll_deg`
+- `thickness_scale`
+- `sweep_qc_deg`
+- `dihedral_deg`
 
-## 8. Typical Design Patterns
+### Per Profile
 
-### Conventional Transport Wing
+- `profile_id`
+- `leading_edge_radius`
+- `max_thickness`
+- `x_tmax`
+- `max_camber`
+- `x_cmax`
+- `trailing_edge_wedge_angle_deg`
+- `trailing_edge_camber_angle_deg`
+- `aft_control_x`
+- `te_thickness`
 
-Use:
+### Per Wing Section
 
-- 3 to 5 anchor stations
-- `SEGMENTED`
-- `C2`
-- moderate `blend_fraction`
+- `station_id`
+- `span_position` or `eta`
+- `profile_id`
+- `chord`
+- `x_le`
+- `vertical_y`
+- `twist_deg`
+- `pitch_deg`
+- `roll_deg`
+- `thickness_scale`
 
-Good starting point:
+If you use `WingStationSpec`, you may also define:
 
-```python
-InterpolationSpec(
-    method=InterpolationMethod.SEGMENTED,
-    continuity=ContinuityOrder.C2,
-    blend_fraction=0.16,
-)
-```
+- `sweep_le_deg`
+- `dihedral_deg`
 
-### Wing with a Hard Structural Kink
+### Per Wing
 
-Use:
+- `wing_id`
+- `semispan`
+- `root_x`
+- `root_y`
+- `root_z`
+- `section_interpolation`
+- `spine_interpolation`
+- `scalar_laws`
+- `metadata`
 
-- `LINEAR`
+## What Still Needs Improvement
 
-This keeps the break explicit and does not smooth it.
+The package is useful, but it is not finished.
 
-### Intentionally Curved Wing
+### Wing-Level Improvements
 
-Use:
+- a sizing-oriented wing API based on area, aspect ratio, taper ratio,
+  and quarter-chord sweep targets
+- better handling of mirrored full-wing construction as a first-class concept
+- more explicit support for multiple breaks, flaps, and control-surface regions
+- stronger validation of geometric feasibility between neighboring sections
+- more direct control of trailing-edge closure and manufacturability constraints
 
-- `PYSPLINE`
+### Fuselage Improvements
 
-Only use this if a global curved planform is actually desired.
+- richer nose and tail shaping parameters
+- better cockpit and radome control
+- section families beyond the current superellipse-like body model
 
-## 9. Example Scripts
+### Aircraft Assembly Improvements
 
-The current example scripts for the wing workflow are:
+- true fairings
+- component intersection handling
+- watertight export of multi-component assemblies
+- better placement rules for horizontal tails and pylons/nacelles
+
+## Out Of Scope For This Package
+
+The following should not be implemented in `parametrization/aircraft`:
+
+- CTA-specific geometry reconstruction
+- BWB centerbody and nose logic
+- CTA-specific reference matching
+
+Those belong in `parametrization/bwb` and `parametrization/CTA`.
+
+## Examples
+
+The generic examples that remain relevant are:
 
 - `python parametrization/aircraft/examples/run_demo_wing_iges.py`
-  - exports the demo wing to IGES
 - `python parametrization/aircraft/examples/plot_demo_wing_views.py`
-  - generates top, side, front, and 3D wing plots
 - `python parametrization/aircraft/examples/plot_demo_wing_transition_comparison.py`
-  - compares the same wing with `C1` and `C2` segmented transitions
-- `python parametrization/aircraft/examples/plot_cta_planform_match_views.py`
-  - builds an `aircraft` wing whose planform matches the CTA reference and
-    writes comparison plots plus a planform-match summary
-- `python parametrization/aircraft/examples/run_cta_planform_match_iges.py`
-  - exports the CTA-like wing as IGES using a lighter station grid for
-    practical export time
+- `python parametrization/aircraft/examples/show_demo_wing_3d.py`
 
-Generated outputs are written to:
+Wing examples are kept intentionally lean for now. Fuselage and full-aircraft
+examples have been removed until those APIs are refined further.
 
-- `parametrization/aircraft/example_outputs/demo_main_wing/`
-- `parametrization/aircraft/example_outputs/cta_planform_match/`
+## Summary
 
-## 10. Current Scope and Limitations
+Today, `aircraft` is strongest as a section-based wing and lifting-surface
+package, plus a simple fuselage and assembly layer.
 
-Current strengths:
+If the task is:
 
-- generic root-kink-tip style wing definition
-- iCST-driven airfoil profiles
-- straight-by-segment wing layouts
-- local `C1` or `C2` transitions between sections
-- IGES export
-- real-scale plotting
-
-Current limitations:
-
-- no dedicated higher-level planform API yet for area, aspect ratio, taper, or
-  quarter-chord sweep targets
-- no automatic structural reference surfaces yet
-- no dedicated flap, slat, or control-surface parameterization yet
-
-## 11. Implementation Files
-
-If you want to inspect the implementation directly, the key files are:
-
-- `parametrization/aircraft/profiles.py`
-- `parametrization/aircraft/wing.py`
-- `parametrization/aircraft/laws.py`
-- `parametrization/aircraft/lifting_surface.py`
-- `parametrization/aircraft/examples/common_demo.py`
-
-## 12. Quick Summary
-
-The current wing parameterization is based on:
-
-- profile definitions
-- anchor sections
-- straight spanwise segments by default
-- optional local `C1` or `C2` transitions at interior stations
-- explicit user control over twist, thickness, chord, sweep, and dihedral
-
-That makes the workflow suitable for conventional aircraft wings while still
-leaving the door open for more curved geometries when needed.
+- generic wing or tail parametrization: use `aircraft`
+- generic fuselage sections: use `aircraft`
+- BWB centerbody, nose, or CTA-specific geometry: use `bwb` / `CTA`

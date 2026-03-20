@@ -227,8 +227,30 @@ def plot_section_profiles(
     ax,
     prepared: PreparedLiftingSurface,
     title: str = "Section profiles (true scale)",
+    selected_etas: tuple[float, ...] | None = None,
+    max_profiles: int = 4,
 ) -> None:
     stations = prepared.stations
+    if not stations:
+        raise ValueError("prepared lifting surface contains no section profiles")
+
+    def select_indices() -> list[int]:
+        n = len(stations)
+        if selected_etas:
+            chosen = []
+            for eta in selected_etas:
+                target = float(eta)
+                nearest = min(range(n), key=lambda idx: abs(float(stations[idx].eta) - target))
+                if nearest not in chosen:
+                    chosen.append(nearest)
+            return chosen
+
+        count = min(max(1, int(max_profiles)), n)
+        if count >= n:
+            return list(range(n))
+        return sorted(set(np.linspace(0, n - 1, count, dtype=int).tolist()))
+
+    indices = select_indices()
     raw_profiles = [
         (
             float(station.chord) * np.asarray(station.x_air, dtype=float),
@@ -236,7 +258,8 @@ def plot_section_profiles(
             float(station.chord) * np.asarray(station.yl, dtype=float),
             station,
         )
-        for station in stations
+        for idx, station in enumerate(stations)
+        if idx in indices
     ]
 
     height_spans = [float(np.max(yu) - np.min(yl)) for _, yu, yl, _ in raw_profiles]
@@ -255,8 +278,8 @@ def plot_section_profiles(
         ax.text(
             float(x_vals[-1]) + 0.2,
             offset,
-            f"{station.section_id}  eta={station.eta:.2f}  c={station.chord:.2f} m",
-            fontsize=8.0,
+            f"eta={station.eta:.2f}  c={station.chord:.2f} m",
+            fontsize=8.6,
             va="center",
             color="#334155",
         )
@@ -306,6 +329,8 @@ def plot_lifting_surface_3d(ax, mesh: LiftingSurfaceMesh, title: str = "3D view"
 def create_lifting_surface_overview_figure(
     prepared: PreparedLiftingSurface,
     title: str | None = None,
+    profile_station_etas: tuple[float, ...] | None = None,
+    max_section_profiles: int = 4,
 ) -> tuple[plt.Figure, np.ndarray]:
     mesh = build_lifting_surface_mesh(prepared)
     figure_title = title or prepared.component_id
@@ -314,7 +339,13 @@ def create_lifting_surface_overview_figure(
     plot_planform(axes[0, 0], mesh, title=f"{figure_title} | top view")
     plot_side_view(axes[0, 1], mesh, title=f"{figure_title} | side view")
     plot_front_view(axes[1, 0], mesh, title=f"{figure_title} | front view")
-    plot_section_profiles(axes[1, 1], prepared, title=f"{figure_title} | section profiles")
+    plot_section_profiles(
+        axes[1, 1],
+        prepared,
+        title=f"{figure_title} | section profiles",
+        selected_etas=profile_station_etas,
+        max_profiles=max_section_profiles,
+    )
     return fig, axes
 
 
@@ -334,17 +365,22 @@ def save_lifting_surface_overview(
     out_dir: str | Path,
     stem: str | None = None,
     title: str | None = None,
-) -> tuple[Path, Path]:
+    profile_station_etas: tuple[float, ...] | None = None,
+    max_section_profiles: int = 4,
+) -> Path:
     output_dir = Path(out_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     file_stem = stem or prepared.component_id
-    fig, _ = create_lifting_surface_overview_figure(prepared, title=title)
+    fig, _ = create_lifting_surface_overview_figure(
+        prepared,
+        title=title,
+        profile_station_etas=profile_station_etas,
+        max_section_profiles=max_section_profiles,
+    )
     png_path = output_dir / f"{file_stem}_views.png"
-    svg_path = output_dir / f"{file_stem}_views.svg"
     _save_figure(fig, png_path, dpi=220, bbox_inches="tight")
-    _save_figure(fig, svg_path, bbox_inches="tight")
     plt.close(fig)
-    return png_path, svg_path
+    return png_path
 
 
 def save_lifting_surface_3d(

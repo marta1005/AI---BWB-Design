@@ -10,6 +10,36 @@ from .sections import SectionAnchorSpec, SectionPlacement
 
 
 @dataclass(frozen=True)
+class WingSpanStationSpec:
+    station_id: str
+    span_position: float
+    profile_id: str
+    chord: float
+    x_le: float
+    twist_deg: float = 0.0
+    pitch_deg: float = 0.0
+    roll_deg: float = 0.0
+    thickness_scale: float = 1.0
+    vertical_y: float = 0.0
+
+    def validate(self, semispan: float) -> None:
+        if not self.station_id:
+            raise ValueError("station_id must be non-empty")
+        if not (0.0 <= self.span_position <= float(semispan)):
+            raise ValueError(
+                f"station {self.station_id!r} span_position must lie in [0, semispan], got {self.span_position}"
+            )
+        if not self.profile_id:
+            raise ValueError(f"station {self.station_id!r} profile_id must be non-empty")
+        if self.chord <= 0.0:
+            raise ValueError(f"station {self.station_id!r} chord must be positive, got {self.chord}")
+        if self.thickness_scale <= 0.0:
+            raise ValueError(
+                f"station {self.station_id!r} thickness_scale must be positive, got {self.thickness_scale}"
+            )
+
+
+@dataclass(frozen=True)
 class WingStationSpec:
     station_id: str
     eta: float
@@ -70,6 +100,85 @@ class WingSpec:
     scalar_laws: Tuple[ScalarLawSpec, ...] = ()
     mirrored: bool = False
     metadata: Dict[str, str] = field(default_factory=dict)
+
+    @classmethod
+    def from_span_sections(
+        cls,
+        *,
+        wing_id: str,
+        semispan: float,
+        sections: Tuple[WingSpanStationSpec, ...],
+        section_interpolation: InterpolationSpec = InterpolationSpec(
+            method=InterpolationMethod.SEGMENTED,
+            continuity=ContinuityOrder.C2,
+            blend_fraction=0.18,
+        ),
+        spine_interpolation: InterpolationSpec = InterpolationSpec(
+            method=InterpolationMethod.SEGMENTED,
+            continuity=ContinuityOrder.C2,
+            blend_fraction=0.18,
+        ),
+        scalar_laws: Tuple[ScalarLawSpec, ...] = (),
+        mirrored: bool = False,
+        metadata: Dict[str, str] | None = None,
+    ) -> "WingSpec":
+        if semispan <= 0.0:
+            raise ValueError(f"semispan must be positive, got {semispan}")
+        if len(sections) < 2:
+            raise ValueError("a wing must define at least 2 span sections")
+
+        seen_ids = set()
+        section_positions = []
+        for section in sections:
+            section.validate(semispan)
+            if section.station_id in seen_ids:
+                raise ValueError(f"duplicate span-section station_id detected: {section.station_id!r}")
+            seen_ids.add(section.station_id)
+            section_positions.append(float(section.span_position))
+
+        if any(left >= right for left, right in zip(section_positions[:-1], section_positions[1:])):
+            raise ValueError(
+                f"span sections must be strictly increasing in span_position, got {tuple(section_positions)}"
+            )
+        if abs(section_positions[0]) > 1e-12:
+            raise ValueError(
+                f"the first span section must be at span_position=0.0, got {section_positions[0]}"
+            )
+        if abs(section_positions[-1] - float(semispan)) > 1e-12:
+            raise ValueError(
+                f"the last span section must be at semispan={semispan}, got {section_positions[-1]}"
+            )
+
+        root = sections[0]
+        wing_stations = tuple(
+            WingStationSpec(
+                station_id=section.station_id,
+                eta=float(section.span_position) / float(semispan),
+                profile_id=section.profile_id,
+                chord=float(section.chord),
+                twist_deg=float(section.twist_deg),
+                pitch_deg=float(section.pitch_deg),
+                roll_deg=float(section.roll_deg),
+                thickness_scale=float(section.thickness_scale),
+                x_le=float(section.x_le) if index > 0 else None,
+                vertical_y=float(section.vertical_y) if index > 0 else None,
+            )
+            for index, section in enumerate(sections)
+        )
+
+        return cls(
+            wing_id=wing_id,
+            semispan=float(semispan),
+            stations=wing_stations,
+            root_x=float(root.x_le),
+            root_y=float(root.vertical_y),
+            root_z=0.0,
+            section_interpolation=section_interpolation,
+            spine_interpolation=spine_interpolation,
+            scalar_laws=scalar_laws,
+            mirrored=mirrored,
+            metadata={} if metadata is None else dict(metadata),
+        )
 
     def validate(self) -> None:
         if not self.wing_id:

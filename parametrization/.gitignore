@@ -5,11 +5,6 @@ __pycache__/
 CTA/example_outputs/*
 !CTA/example_outputs/reference/
 !CTA/example_outputs/reference/**
+CTA/example_outputs/reference/*.igs
 aircraft/.mplconfig/
 aircraft/example_outputs/*
-!aircraft/example_outputs/cta_planform_match/
-aircraft/example_outputs/cta_planform_match/profiles/
-!aircraft/example_outputs/cta_planform_match/*.igs
-!aircraft/example_outputs/cta_planform_match/*.png
-!aircraft/example_outputs/cta_planform_match/*.svg
-!aircraft/example_outputs/cta_planform_match/*.json

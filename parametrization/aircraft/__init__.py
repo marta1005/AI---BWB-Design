@@ -47,7 +47,8 @@ from .profiles import (
     ProfileSample,
 )
 from .sections import SectionAnchorSpec, SectionPlacement
-from .wing import WingSpec, WingStationSpec
+from .wing import WingSpec, WingSpanStationSpec, WingStationSpec
+from .wing_designer import WingDesignerSpec, WingStationDesignerSpec, WingTransitionSpec
 from .vertical_tail import VerticalTailSpec, VerticalTailStationSpec
 
 
@@ -173,7 +174,11 @@ __all__ = [
     "VerticalTailSpec",
     "VerticalTailStationSpec",
     "WingSpec",
+    "WingDesignerSpec",
+    "WingSpanStationSpec",
+    "WingStationDesignerSpec",
     "WingStationSpec",
+    "WingTransitionSpec",
     "build_fuselage_mesh",
     "build_fuselage_pygeo",
     "build_fuselage_surface",
