@@ -3,7 +3,7 @@ span,Wing span,B2+B3,m,absolute,30.0,31.459,35.0,"Outer semispan of the CTA plan
 c1_root_chord,Body chord,C0,m,absolute,37.0,41.203,45.0,CTA body chord. C1 is derived from C0 with fixed sweep S and straight TE(C0->C1).
 c2_c1_ratio,Transition-wing chord,C3,m,absolute,13.0,13.927,16.0,CTA transition-wing chord C3. This section remains anchored at y=8.041 m.
 c3_c1_ratio,Outer-wing chord,C4,m,absolute,6.8,7.768,9.8,CTA outer-wing chord C4.
-b2_span_ratio,Transition wing fraction B2,B2/(B2+B3),-,fraction of wing span,0.14,0.14202612924759211,0.2,"CTA transition-wing fraction measured against wing span. Wing span is the outer semispan excluding the fixed body segment B1, so wing span = B2 + B3."
+b2_span_ratio,Transition wing fraction B2,B2/(B2+B3),-,fraction of wing span,0.14,0.14202612924759211,0.23,"CTA transition-wing fraction measured against wing span. Wing span is the outer semispan excluding the fixed body segment B1, so wing span = B2 + B3."
 c4_c1_ratio,Wing tip chord,C5,m,absolute,0.8,0.8000000000000002,1.8,CTA wing-tip chord C5.
 s2_deg,Sweep S1,S1,deg,angle,45.0,54.059,66.0,CTA sweep S1 (mapped from s2_deg).
 s3_deg,Sweep S2,S2,deg,angle,27.0,27.71,40.0,CTA sweep S2 (mapped from s3_deg).

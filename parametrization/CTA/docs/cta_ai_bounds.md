@@ -6,7 +6,9 @@
 - `B1` (`b1_fixed_m`): `8.041` m
 - `C1` conditioned by fixed `S` and straight `TE(C0->C1)`
 - no public `C2`: the inboard `TE(C1->C3)` blend is built with a hidden helper point
-- `C4` derived from active `C3`, `B2`, `S1`, and straight `TE(C3->C4)`
+- `C3` and `C4` are active chord variables
+- `TE(C3->C4)` is smooth and not constrained to remain straight
+- `twist` is constant from Section 0 through Section 3
 - `te_exact_segments`: `(0, 4)`
 
 ## Active Variables
@@ -17,7 +19,7 @@
 | c1_root_chord | Body chord | C0 | m | 37 | 41.203 | 45 |
 | c2_c1_ratio | Transition-wing chord | C3 | m | 13 | 13.927 | 16 |
 | c3_c1_ratio | Outer-wing chord | C4 | m | 6.8 | 7.768 | 9.8 |
-| b2_span_ratio | Transition wing fraction B2 | B2/(B2+B3) | - | 0.14 | 0.142026 | 0.2 |
+| b2_span_ratio | Transition wing fraction B2 | B2/(B2+B3) | - | 0.14 | 0.142026 | 0.23 |
 | c4_c1_ratio | Wing tip chord | C5 | m | 0.8 | 0.8 | 1.8 |
 | s2_deg | Sweep S1 | S1 | deg | 45 | 54.059 | 66 |
 | s3_deg | Sweep S2 | S2 | deg | 27 | 27.71 | 40 |

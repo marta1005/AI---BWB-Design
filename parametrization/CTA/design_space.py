@@ -53,7 +53,7 @@ CTA_PUBLIC_ACTIVE_BOUNDS: Dict[str, Tuple[float, float]] = {
     "c1_root_chord": (37.0, 45.0),  # C0
     "c2_c1_ratio": (13.0, 16.0),  # C3 in absolute meters at the CTA layer
     "c3_c1_ratio": (6.8, 9.8),  # C4 in absolute meters at the CTA layer
-    "b2_span_ratio": (0.14, 0.20),  # B2 / (B2 + B3)
+    "b2_span_ratio": (0.14, 0.23),  # B2 / (B2 + B3)
     "c4_c1_ratio": (0.80, 1.80),  # C5 in absolute meters at the CTA layer
     "s2_deg": (45.0, 66.0),  # S1
     "s3_deg": (27.0, 40.0),  # S2

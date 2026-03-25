@@ -14,7 +14,7 @@ os.environ.setdefault("MPLCONFIGDIR", str(SCRIPT_DIR.parent.parent / ".mplconfig
 import matplotlib.pyplot as plt
 
 from parametrization.CTA.reference import build_reference_design, to_cta_model_config
-from parametrization.CTA.core.builder import prepare_geometry
+from parametrization.bwb.builder import prepare_geometry
 
 
 def draw_3d(ax, prepared, dense_span: np.ndarray, leading_edge_x: np.ndarray, chord_dense: np.ndarray) -> None:
