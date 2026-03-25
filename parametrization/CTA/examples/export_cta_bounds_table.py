@@ -38,8 +38,10 @@ def write_markdown(path: Path, rows, summary):
         "## Fixed Parameters",
         "",
         f"- `S` (`s1_deg`): `{fixed['s_deg']}` deg",
-        f"- `C1` (`c1_root_chord`): `{fixed['c1_root_chord']}` m",
-        f"- `C2/C1` (`c2_c1_ratio`): `{fixed['c2_c1_ratio']}`",
+        f"- `B1` (`b1_fixed_m`): `{fixed['b1_fixed_m']}` m",
+        "- `C1` conditioned by fixed `S` and straight `TE(C0->C1)`",
+        "- no public `C2`: the inboard `TE(C1->C3)` blend is built with a hidden helper point",
+        "- `C4` derived from active `C3`, `B2`, `S1`, and straight `TE(C3->C4)`",
         f"- `te_exact_segments`: `{fixed['te_exact_segments']}`",
         "",
         "## Active Variables",
@@ -76,4 +78,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

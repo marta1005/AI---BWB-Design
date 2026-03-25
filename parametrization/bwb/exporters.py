@@ -72,21 +72,42 @@ def build_pygeo_surface(
             f"{detail}"
         ) from exc
 
+    xsections = airfoil_list
+    scale = np.asarray(loft.chord, dtype=float)
+    offset = np.asarray(loft.offset, dtype=float)
+    x = np.asarray(loft.leading_edge_x, dtype=float)
+    y = np.asarray(loft.vertical_y, dtype=float)
+    z = np.asarray(loft.span_z, dtype=float)
+    rot_z = np.asarray(loft.twist_deg, dtype=float)
+    te_height_local = None if te_height_scaled is None else np.asarray(te_height_scaled, dtype=float)
+
+    if config.export.symmetric:
+        mirror_slice = slice(1, None)
+        xsections = list(xsections[mirror_slice][::-1]) + list(xsections)
+        scale = np.concatenate([scale[mirror_slice][::-1], scale], axis=0)
+        offset = np.vstack([offset[mirror_slice][::-1], offset])
+        x = np.concatenate([x[mirror_slice][::-1], x], axis=0)
+        y = np.concatenate([y[mirror_slice][::-1], y], axis=0)
+        z = np.concatenate([-z[mirror_slice][::-1], z], axis=0)
+        rot_z = np.concatenate([rot_z[mirror_slice][::-1], rot_z], axis=0)
+        if te_height_local is not None:
+            te_height_local = np.concatenate([te_height_local[mirror_slice][::-1], te_height_local], axis=0)
+
     kwargs = {}
     if config.export.blunt_te:
-        if te_height_scaled is None:
+        if te_height_local is None:
             raise ValueError("blunt_te=True requires te_height_scaled for pyGeo export")
-        kwargs["teHeightScaled"] = np.asarray(te_height_scaled, dtype=float).tolist()
+        kwargs["teHeightScaled"] = te_height_local.tolist()
 
     return pyGeo(
         "liftingSurface",
-        xsections=airfoil_list,
-        scale=loft.chord,
-        offset=loft.offset,
-        x=loft.leading_edge_x,
-        y=loft.vertical_y,
-        z=loft.span_z,
-        rotZ=loft.twist_deg,
+        xsections=xsections,
+        scale=scale,
+        offset=offset,
+        x=x,
+        y=y,
+        z=z,
+        rotZ=rot_z,
         nCtl=config.sampling.section_curve_n_ctl,
         kSpan=config.sampling.k_span,
         bluntTe=config.export.blunt_te,

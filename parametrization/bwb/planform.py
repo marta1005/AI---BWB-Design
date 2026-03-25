@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 
 import numpy as np
+from scipy.interpolate import PchipInterpolator
 
 from parametrization.shared.dependency_setup import load_pyspline_curve
 from .specs import PlanformSpec
@@ -151,6 +152,93 @@ class PiecewiseLinearAxis:
         return float(np.interp(float(y), self.points[:, 1], self.points[:, 0]))
 
 
+class InterpolatingSplineAxis:
+    def __init__(self, points: np.ndarray):
+        pts = PiecewiseLinearAxis(points).points
+        self.points = pts
+        if np.allclose(pts[:, 0], pts[0, 0], atol=1e-12, rtol=1e-12):
+            self._curve = float(pts[0, 0])
+            return
+        Curve = load_pyspline_curve(rebuild_if_needed=True)
+        self._curve = Curve(x=pts[:, 0], s=pts[:, 1], k=min(4, pts.shape[0]))
+
+    def __call__(self, y: float) -> float:
+        if isinstance(self._curve, (float, np.floating)):
+            return float(self._curve)
+        y = float(np.clip(float(y), self.points[0, 1], self.points[-1, 1]))
+        return float(np.asarray(self._curve(y)).reshape(-1)[0])
+
+
+class HybridSplineLinearAxis:
+    def __init__(self, points: np.ndarray, linear_start_index: int):
+        pts = PiecewiseLinearAxis(points).points
+        if linear_start_index < 1 or linear_start_index >= pts.shape[0] - 1:
+            raise ValueError(
+                "HybridSplineLinearAxis requires 1 <= linear_start_index < point_count - 1, "
+                f"got {linear_start_index} for {pts.shape[0]} points"
+            )
+        self.points = pts
+        self.linear_start_index = int(linear_start_index)
+        self._spline_axis = InterpolatingSplineAxis(pts[: self.linear_start_index + 1])
+        self._linear_axis = PiecewiseLinearAxis(pts[self.linear_start_index :])
+        self._linear_start_y = float(pts[self.linear_start_index, 1])
+
+    def __call__(self, y: float) -> float:
+        y = float(y)
+        if y <= self._linear_start_y:
+            return float(self._spline_axis(y))
+        return float(self._linear_axis(y))
+
+
+class SplineBridgeAxis:
+    def __init__(
+        self,
+        points: np.ndarray,
+        start_index: int,
+        end_index: int,
+        inboard_radius_factor: float = 1.0,
+    ):
+        pts = PiecewiseLinearAxis(points).points
+        if not (0 < start_index < end_index < pts.shape[0] - 1):
+            raise ValueError(
+                "SplineBridgeAxis requires 0 < start_index < end_index < point_count - 1, "
+                f"got {(start_index, end_index)} for {pts.shape[0]} points"
+            )
+
+        self.points = pts
+        self.start_index = int(start_index)
+        self.end_index = int(end_index)
+        self.y_start = float(pts[self.start_index, 1])
+        self.y_end = float(pts[self.end_index, 1])
+        self.inboard_radius_factor = float(max(inboard_radius_factor, 1e-6))
+        self.left_axis = PiecewiseLinearAxis(pts[: self.start_index + 1])
+        self.right_axis = PiecewiseLinearAxis(pts[self.end_index :])
+        bridge_pts = pts[self.start_index : self.end_index + 1]
+        self._curve = PchipInterpolator(
+            bridge_pts[:, 1].astype(float),
+            bridge_pts[:, 0].astype(float),
+            extrapolate=True,
+        )
+        if bridge_pts.shape[0] >= 2:
+            self.y_helper = float(bridge_pts[1, 1])
+        else:
+            self.y_helper = self.y_start
+
+    def __call__(self, y: float) -> float:
+        y = float(y)
+        if y <= self.y_start:
+            return float(self.left_axis(y))
+        if y >= self.y_end:
+            return float(self.right_axis(y))
+        y_eval = y
+        if self.y_start < y < self.y_helper and abs(self.inboard_radius_factor - 1.0) > 1e-12:
+            span = max(self.y_helper - self.y_start, 1e-12)
+            t = (y - self.y_start) / span
+            t_warp = np.power(np.clip(t, 0.0, 1.0), self.inboard_radius_factor)
+            y_eval = self.y_start + t_warp * span
+        return float(np.asarray(self._curve(y_eval)).reshape(-1)[0])
+
+
 class SegmentedSpanAxis:
     def __init__(
         self,
@@ -184,11 +272,10 @@ class SegmentedSpanAxis:
             right_exact = idx in self.exact_segments
 
             if left_exact and right_exact:
-                if not np.isclose(self.slopes[idx - 1], self.slopes[idx], atol=1e-10, rtol=1e-10):
-                    raise ValueError(
-                        "Adjacent exact linear segments must share the same slope to keep continuity, "
-                        f"got slopes {self.slopes[idx - 1]} and {self.slopes[idx]} at node {idx}"
-                    )
+                # Allow a hard geometric corner when two neighboring segments are
+                # both declared exact. This is required for CTA-style trailing
+                # edges where one exact vertical segment transitions into a
+                # different exact outer-wing line at C4.
                 continue
             if right_exact and not left_exact:
                 self.widths_left[idx] = self.blend_fraction * dy_left
@@ -343,15 +430,32 @@ def build_sectioned_bwb_planform(
     te_axis = SegmentedSpanAxis(
         te_points,
         continuity_order=planform.continuity_order,
-        blend_fraction=planform.blend_fraction,
-        min_linear_core_fraction=planform.min_linear_core_fraction,
+        blend_fraction=(
+            planform.blend_fraction
+            if planform.te_blend_fraction is None
+            else planform.te_blend_fraction
+        ),
+        min_linear_core_fraction=(
+            planform.min_linear_core_fraction
+            if planform.te_min_linear_core_fraction is None
+            else planform.te_min_linear_core_fraction
+        ),
         exact_segment_indices=planform.te_exact_segments,
     )
+    if planform.te_spline_bridge is not None:
+        te_axis = SplineBridgeAxis(
+            te_points,
+            start_index=int(planform.te_spline_bridge[0]),
+            end_index=int(planform.te_spline_bridge[1]),
+            inboard_radius_factor=planform.te_inboard_radius_factor,
+        )
 
     if planform.symmetry_blend_y > 1e-12:
         le_slope0 = float((le_points[1, 0] - le_points[0, 0]) / max(le_points[1, 1] - le_points[0, 1], 1e-12))
-        te_slope0 = float((te_points[1, 0] - te_points[0, 0]) / max(te_points[1, 1] - te_points[0, 1], 1e-12))
-        blend_y = float(min(planform.symmetry_blend_y, 0.95 * min(le_points[1, 1], te_points[1, 1])))
+        if planform.body_le_fixed_points:
+            blend_y = float(min(planform.symmetry_blend_y, le_points[1, 1]))
+        else:
+            blend_y = float(min(planform.symmetry_blend_y, 0.95 * min(le_points[1, 1], te_points[1, 1])))
         le_axis = SymmetryRootBlendAxis(
             base_axis=le_axis,
             root_x=float(le_sections[0]),
@@ -359,7 +463,8 @@ def build_sectioned_bwb_planform(
             blend_y=blend_y,
             continuity_order=planform.continuity_order,
         )
-        if 0 not in planform.te_exact_segments:
+        if not planform.body_le_fixed_points and 0 not in planform.te_exact_segments:
+            te_slope0 = float((te_points[1, 0] - te_points[0, 0]) / max(te_points[1, 1] - te_points[0, 1], 1e-12))
             te_axis = SymmetryRootBlendAxis(
                 base_axis=te_axis,
                 root_x=float(te_sections[0]),

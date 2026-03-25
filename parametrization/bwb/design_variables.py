@@ -493,8 +493,8 @@ class SectionedBWBDesignVariables:
         ):
             if len(coeffs) != 6:
                 raise ValueError(f"{label} must have 6 CST coefficients, got {len(coeffs)}")
-            if any(value < 0.0 for value in coeffs):
-                raise ValueError(f"{label} must be non-negative")
+            if any(not np.isfinite(value) for value in coeffs):
+                raise ValueError(f"{label} must be finite")
 
     def to_model_config(
         self,

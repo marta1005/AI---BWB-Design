@@ -1,0 +1,13 @@
+Section: C1
+Baseline N1=0.5000, N2=1.0000
+Baseline metrics: tc_max=0.23000, x_tmax=0.32768, te=0.00200, max_camber=0.01473
+
+Most influential UPPER coefficients:
+  a1: score=0.005909
+  a0: score=0.004065
+  a2: score=0.003936
+
+Most influential LOWER coefficients:
+  a1: score=0.004470
+  a0: score=0.003220
+  a2: score=0.003041

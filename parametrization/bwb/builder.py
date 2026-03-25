@@ -29,8 +29,19 @@ class PreparedGeometry:
 
 def build_span_stations(config: SectionedBWBModelConfig) -> np.ndarray:
     base_stations = np.linspace(0.0, config.topology.span, config.sampling.num_base_stations)
+    planform_helper_stations = np.unique(
+        np.concatenate(
+            [
+                config.planform.leading_edge_points(config.topology)[:, 1],
+                config.planform.trailing_edge_points(config.topology)[:, 1],
+            ]
+        )
+    )
     span_stations = np.unique(
-        np.round(np.concatenate([base_stations, config.topology.anchor_y_array]), decimals=12)
+        np.round(
+            np.concatenate([base_stations, config.topology.anchor_y_array, planform_helper_stations]),
+            decimals=12,
+        )
     )
     return span_stations.astype(float)
 

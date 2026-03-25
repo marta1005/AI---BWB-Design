@@ -26,10 +26,10 @@ class SectionCSTSpec:
                 f"{prefix}.lower_coeffs must have size {expected_size}, "
                 f"got {len(self.lower_coeffs)}"
             )
-        if any(value < 0.0 for value in self.upper_coeffs):
-            raise ValueError(f"{prefix}.upper_coeffs must be non-negative")
-        if any(value < 0.0 for value in self.lower_coeffs):
-            raise ValueError(f"{prefix}.lower_coeffs must be non-negative")
+        if not all(np.isfinite(value) for value in self.upper_coeffs):
+            raise ValueError(f"{prefix}.upper_coeffs must be finite")
+        if not all(np.isfinite(value) for value in self.lower_coeffs):
+            raise ValueError(f"{prefix}.lower_coeffs must be finite")
         if self.tc_max <= 0.0:
             raise ValueError(f"{prefix}.tc_max must be positive, got {self.tc_max}")
         if not (0.0 < self.x_tmax < 1.0):
@@ -77,11 +77,19 @@ class PlanformSpec:
     s1_deg: float = 55.0
     s2_deg: float = 50.0
     s3_deg: float = 32.0
-    te_aux1_c2_fraction: float = 5.0 / 8.0
-    te_aux2_c2_fraction: float = 7.0 / 8.0
+    te_c1_span_fraction: float = 5.0 / 8.0
+    te_inboard_blend_fraction: float = 0.96
+    te_inboard_blend_dx: float = 0.0
+    te_inboard_radius_factor: float = 1.0
+    te_outer_blend_fraction: float = 0.10
+    body_le_fixed_points: Tuple[Tuple[float, float], ...] = ()
     continuity_order: int = 2
     blend_fraction: float = 0.18
     min_linear_core_fraction: float = 0.75
+    te_blend_fraction: Optional[float] = None
+    te_min_linear_core_fraction: Optional[float] = None
+    le_linear_start_index: Optional[int] = None
+    te_spline_bridge: Optional[Tuple[int, int]] = None
     symmetry_blend_y: float = 2.50
     te_exact_segments: Tuple[int, ...] = (0, 3)
 
@@ -104,6 +112,32 @@ class PlanformSpec:
                 "min_linear_core_fraction must lie in [0, 1), "
                 f"got {self.min_linear_core_fraction}"
             )
+        if self.te_blend_fraction is not None and not (0.0 <= self.te_blend_fraction <= 0.45):
+            raise ValueError(
+                f"te_blend_fraction must lie in [0, 0.45], got {self.te_blend_fraction}"
+            )
+        if self.te_min_linear_core_fraction is not None and not (
+            0.0 <= self.te_min_linear_core_fraction < 1.0
+        ):
+            raise ValueError(
+                "te_min_linear_core_fraction must lie in [0, 1), "
+                f"got {self.te_min_linear_core_fraction}"
+            )
+        if self.le_linear_start_index is not None and self.le_linear_start_index < 1:
+            raise ValueError(
+                f"le_linear_start_index must be >= 1 when provided, got {self.le_linear_start_index}"
+            )
+        if self.te_spline_bridge is not None:
+            if len(self.te_spline_bridge) != 2:
+                raise ValueError(
+                    f"te_spline_bridge must contain exactly 2 indices, got {self.te_spline_bridge}"
+                )
+            start_idx, end_idx = self.te_spline_bridge
+            if not (0 < start_idx < end_idx):
+                raise ValueError(
+                    "te_spline_bridge must satisfy 0 < start_idx < end_idx, "
+                    f"got {self.te_spline_bridge}"
+                )
         if self.symmetry_blend_y < 0.0:
             raise ValueError(
                 f"symmetry_blend_y must be non-negative, got {self.symmetry_blend_y}"
@@ -112,11 +146,33 @@ class PlanformSpec:
             raise ValueError(
                 f"te_exact_segments must contain non-negative segment indices, got {self.te_exact_segments}"
             )
-        if not (0.0 < self.te_aux1_c2_fraction < self.te_aux2_c2_fraction < 1.0):
+        if not (0.0 < self.te_c1_span_fraction < self.te_inboard_blend_fraction < 1.0):
             raise ValueError(
-                "CTA TE auxiliary fractions must satisfy 0 < te_aux1_c2_fraction < "
-                f"te_aux2_c2_fraction < 1, got {(self.te_aux1_c2_fraction, self.te_aux2_c2_fraction)}"
+                "CTA TE fractions must satisfy 0 < te_c1_span_fraction < "
+                "te_inboard_blend_fraction < 1, got "
+                f"{(self.te_c1_span_fraction, self.te_inboard_blend_fraction)}"
             )
+        if self.te_inboard_radius_factor <= 0.0:
+            raise ValueError(
+                "te_inboard_radius_factor must be positive, "
+                f"got {self.te_inboard_radius_factor}"
+            )
+        if not (0.0 <= self.te_outer_blend_fraction < 1.0):
+            raise ValueError(
+                f"te_outer_blend_fraction must lie in [0, 1), got {self.te_outer_blend_fraction}"
+            )
+        if self.body_le_fixed_points:
+            helper_y = [float(point[1]) for point in self.body_le_fixed_points]
+            if any(value <= 0.0 for value in helper_y):
+                raise ValueError(
+                    "body_le_fixed_points must have positive spanwise y values, "
+                    f"got {self.body_le_fixed_points}"
+                )
+            if any(left >= right for left, right in zip(helper_y[:-1], helper_y[1:])):
+                raise ValueError(
+                    "body_le_fixed_points must be strictly increasing in spanwise y, "
+                    f"got {self.body_le_fixed_points}"
+                )
         for label, value in (("s1_deg", self.s1_deg), ("s2_deg", self.s2_deg), ("s3_deg", self.s3_deg)):
             if not (0.0 < value < 85.0):
                 raise ValueError(f"{label} must lie in (0, 85), got {value}")
@@ -148,45 +204,65 @@ class PlanformSpec:
     def leading_edge_points(self, topology: SectionedBWBTopologySpec) -> np.ndarray:
         y_sections = topology.y_sections_array
         le_sections = self.leading_edge_x_sections(topology)
-        return np.column_stack([le_sections, y_sections, np.zeros_like(y_sections)])
+        points = [[float(le_sections[0]), float(y_sections[0]), 0.0]]
+        for x_helper, y_helper in self.body_le_fixed_points:
+            points.append([float(x_helper), float(y_helper), 0.0])
+        for x_section, y_section in zip(le_sections[1:], y_sections[1:]):
+            points.append([float(x_section), float(y_section), 0.0])
+        return np.asarray(points, dtype=float)
 
     def trailing_edge_points(self, topology: SectionedBWBTopologySpec) -> np.ndarray:
         y_sections = topology.y_sections_array
         te_sections = self.trailing_edge_x_sections(topology)
 
-        y_c2 = float(y_sections[1])
-        if y_c2 <= 1e-12:
+        y_c3 = float(y_sections[1])
+        if y_c3 <= 1e-12:
             raise ValueError("CTA-style TE auxiliary points require the first main section to lie away from the root")
 
-        y_aux1 = float(self.te_aux1_c2_fraction * y_c2)
-        y_aux2 = float(self.te_aux2_c2_fraction * y_c2)
+        y_c1 = float(self.te_c1_span_fraction * y_c3)
+        y_inboard_blend = float(self.te_inboard_blend_fraction * y_c3)
 
         te_root = float(te_sections[0])
-        te_c2 = float(te_sections[1])
-        te_c3 = float(te_sections[2])
+        te_c3 = float(te_sections[1])
+        te_c4 = float(te_sections[2])
         te_tip = float(te_sections[3])
+        y_c4 = float(y_sections[2])
+        y_tip = float(y_sections[3])
 
-        # CTA reference: the first inboard TE segment is vertical in planform,
-        # so the first auxiliary point keeps the same x-position as the root TE.
-        te_aux1 = te_root
-        # Keep C2 as an auxiliary transition control point for the inboard TE:
-        # place it on the root->C3 secant at y_aux2 so the C2 neighborhood
-        # is handled by the spanwise pyspline transition instead of a hard
-        # local vertical segment.
-        secant_ratio = y_aux2 / y_c2
-        te_aux2 = te_root + secant_ratio * (te_c2 - te_root)
+        # CTA reference:
+        # - C0 -> C1 is a straight vertical TE segment.
+        # - C1 -> C3 is a marked blend.
+        # - C3 is a real geometric break.
+        #
+        # We keep one hidden helper point inside the C1 -> C3 blend so the
+        # planform can stay smooth there without exposing a public "C2".
+        te_c1 = te_root
+        # The inboard hidden helper shapes the marked C1->C3 blend. By default
+        # it lies on the public C1->C3 secant, but CTA can override it with a
+        # fixed aft offset measured from C3 to reproduce the Airbus sketch.
+        if abs(float(self.te_inboard_blend_dx)) > 1e-12:
+            te_inboard_blend = te_c3 + float(self.te_inboard_blend_dx)
+            te_inboard_blend = float(min(max(te_c3, te_inboard_blend), te_c1))
+        else:
+            blend_ratio = (y_inboard_blend - y_c1) / max(y_c3 - y_c1, 1e-12)
+            te_inboard_blend = te_c1 + blend_ratio * (te_c3 - te_c1)
+        points = [
+            [te_root, 0.0, 0.0],
+            [te_c1, y_c1, 0.0],
+            [te_inboard_blend, y_inboard_blend, 0.0],
+            [te_c3, float(y_sections[1]), 0.0],
+            [te_c4, float(y_sections[2]), 0.0],
+        ]
 
-        return np.asarray(
-            [
-                [te_root, 0.0, 0.0],
-                [te_aux1, y_aux1, 0.0],
-                [te_aux2, y_aux2, 0.0],
-                [te_c2, float(y_sections[1]), 0.0],
-                [te_c3, float(y_sections[2]), 0.0],
-                [te_tip, float(y_sections[3]), 0.0],
-            ],
-            dtype=float,
-        )
+        if self.te_outer_blend_fraction > 1e-12:
+            # Optional short outer-wing helper point for a smooth C4->C5 TE.
+            y_outer_blend = y_c4 + self.te_outer_blend_fraction * (y_tip - y_c4)
+            outer_ratio = (y_outer_blend - y_c4) / max(y_tip - y_c4, 1e-12)
+            te_outer_blend = te_c4 + outer_ratio * (te_tip - te_c4)
+            points.append([te_outer_blend, y_outer_blend, 0.0])
+
+        points.append([te_tip, float(y_sections[3]), 0.0])
+        return np.asarray(points, dtype=float)
 
     def validate_with_topology(self, topology: SectionedBWBTopologySpec) -> None:
         le_x = self.leading_edge_x_sections(topology)
@@ -203,6 +279,26 @@ class PlanformSpec:
                 f"te_exact_segments must lie inside [0, {segment_count - 1}], "
                 f"got {self.te_exact_segments}"
             )
+        if self.body_le_fixed_points:
+            first_main_section_y = float(topology.y_sections_array[1])
+            if float(self.body_le_fixed_points[-1][1]) >= first_main_section_y:
+                raise ValueError(
+                    "body_le_fixed_points must remain inside the center-body span before C3, "
+                    f"got {self.body_le_fixed_points} with first main section at y={first_main_section_y:.6f}"
+                )
+        if self.le_linear_start_index is not None:
+            point_count = self.leading_edge_points(topology).shape[0]
+            if self.le_linear_start_index >= point_count - 1:
+                raise ValueError(
+                    f"le_linear_start_index must be < {point_count - 1}, got {self.le_linear_start_index}"
+                )
+        if self.te_spline_bridge is not None:
+            point_count = self.trailing_edge_points(topology).shape[0]
+            start_idx, end_idx = self.te_spline_bridge
+            if end_idx >= point_count - 1:
+                raise ValueError(
+                    f"te_spline_bridge end index must be < {point_count - 1}, got {self.te_spline_bridge}"
+                )
 
 
 @dataclass
@@ -241,6 +337,7 @@ class SectionFamilySpec:
     cst_degree: int = 5
     n1: float = 0.50
     n2: float = 1.0
+    shared_leading_edge: bool = False
     profile_generation_mode: str = "cst_only"
     camber_mode_center: float = 3.5
     camber_mode_width: float = 2.0
@@ -446,6 +543,7 @@ class ExportSpec:
     iges_path: Path = Path("bwb_from_cst_pygeo.igs")
     tip_style: str = "rounded"
     blunt_te: bool = True
+    symmetric: bool = False
 
     def validate(self) -> None:
         if self.tip_style not in {"rounded", "pinched"}:

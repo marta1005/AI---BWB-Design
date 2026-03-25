@@ -160,6 +160,7 @@ def build_section_model(
         n1=sections.n1,
         n2=sections.n2,
         x_tc_window=sections.x_tc_window,
+        shared_leading_edge=sections.shared_leading_edge,
     )
     x_air = cosine_spacing(sampling.num_airfoil_points)
     mask_tc_window = (x_air >= sections.x_tc_window[0]) & (x_air <= sections.x_tc_window[1])
@@ -175,13 +176,23 @@ def build_section_model(
     x_tmax_sections = np.asarray([spec.x_tmax for spec in section_specs], dtype=float)
     te_sections = np.asarray([spec.te_thickness for spec in section_specs], dtype=float)
 
+    scalar_target_interpolation = sampling.section_interpolation
+    if sections.profile_generation_mode == "enforce_targets" and sampling.section_interpolation == "pyspline":
+        # Shape-preserving interpolation avoids pySpline overshoots in scalar
+        # targets such as x_tmax, which can otherwise move the thickness peak
+        # unrealistically close to the leading edge between control sections.
+        scalar_target_interpolation = "pchip"
+
+    # CST coefficients can legitimately be signed for realistic cambered
+    # airfoils, so they must use a signed interpolant instead of the
+    # log-space positive interpolator used for thickness-like scalars.
     coeff_interpolants = [
-        build_positive_interpolant(y_sections, coeff_sections[:, idx], sampling.section_interpolation)
+        build_scalar_interpolant(y_sections, coeff_sections[:, idx], sampling.section_interpolation)
         for idx in range(sections.total_coeff_count)
     ]
-    tc_interpolant = build_positive_interpolant(y_sections, tc_sections, sampling.section_interpolation)
-    x_tmax_interpolant = build_scalar_interpolant(y_sections, x_tmax_sections, sampling.section_interpolation)
-    te_interpolant = build_positive_interpolant(y_sections, te_sections, sampling.section_interpolation)
+    tc_interpolant = build_positive_interpolant(y_sections, tc_sections, scalar_target_interpolation)
+    x_tmax_interpolant = build_scalar_interpolant(y_sections, x_tmax_sections, scalar_target_interpolation)
+    te_interpolant = build_positive_interpolant(y_sections, te_sections, scalar_target_interpolation)
 
     interpolation_name_map = {
         "linear": "Linear",

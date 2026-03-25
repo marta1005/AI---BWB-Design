@@ -1,0 +1,463 @@
+[
+  {
+    "gemseo_variable": "wing_span",
+    "size": 1,
+    "cta_parameters": [
+      "span"
+    ],
+    "units": "m",
+    "normalization": "absolute",
+    "description": "CTA outer semispan, i.e. wing span = B2 + B3.",
+    "lower_bounds": [
+      30.0
+    ],
+    "upper_bounds": [
+      35.0
+    ],
+    "reference": [
+      31.459
+    ]
+  },
+  {
+    "gemseo_variable": "c0_body_chord",
+    "size": 1,
+    "cta_parameters": [
+      "c1_root_chord"
+    ],
+    "units": "m",
+    "normalization": "absolute",
+    "description": "CTA body chord C0.",
+    "lower_bounds": [
+      37.0
+    ],
+    "upper_bounds": [
+      45.0
+    ],
+    "reference": [
+      41.203
+    ]
+  },
+  {
+    "gemseo_variable": "c3_transition_chord",
+    "size": 1,
+    "cta_parameters": [
+      "c2_c1_ratio"
+    ],
+    "units": "m",
+    "normalization": "absolute",
+    "description": "CTA transition-wing chord C3.",
+    "lower_bounds": [
+      13.0
+    ],
+    "upper_bounds": [
+      16.0
+    ],
+    "reference": [
+      13.931236647066639
+    ]
+  },
+  {
+    "gemseo_variable": "b2_wing_fraction",
+    "size": 1,
+    "cta_parameters": [
+      "b2_span_ratio"
+    ],
+    "units": "-",
+    "normalization": "fraction of wing span",
+    "description": "CTA transition-wing fraction B2/(B2+B3).",
+    "lower_bounds": [
+      0.14
+    ],
+    "upper_bounds": [
+      0.2
+    ],
+    "reference": [
+      0.14202612924759211
+    ]
+  },
+  {
+    "gemseo_variable": "c5_wing_tip_chord",
+    "size": 1,
+    "cta_parameters": [
+      "c4_c1_ratio"
+    ],
+    "units": "m",
+    "normalization": "absolute",
+    "description": "CTA wing-tip chord C5.",
+    "lower_bounds": [
+      0.8
+    ],
+    "upper_bounds": [
+      1.8
+    ],
+    "reference": [
+      0.8000000000000002
+    ]
+  },
+  {
+    "gemseo_variable": "sweeps_deg",
+    "size": 2,
+    "cta_parameters": [
+      "s2_deg",
+      "s3_deg"
+    ],
+    "units": "deg",
+    "normalization": "angle",
+    "description": "CTA public sweeps S1 and S2.",
+    "lower_bounds": [
+      45.0,
+      27.0
+    ],
+    "upper_bounds": [
+      66.0,
+      40.0
+    ],
+    "reference": [
+      54.06,
+      27.71
+    ]
+  },
+  {
+    "gemseo_variable": "twist_deg",
+    "size": 4,
+    "cta_parameters": [
+      "twist_c1_deg",
+      "twist_c2_deg",
+      "twist_c3_deg",
+      "twist_c4_deg"
+    ],
+    "units": "deg",
+    "normalization": "angle",
+    "description": "Twist values at CTA sections C0, C3, C4 and C5.",
+    "lower_bounds": [
+      0.2,
+      0.2,
+      0.1,
+      0.1
+    ],
+    "upper_bounds": [
+      2.0,
+      2.0,
+      1.5,
+      1.0
+    ],
+    "reference": [
+      1.0,
+      1.0,
+      0.8,
+      0.6
+    ]
+  },
+  {
+    "gemseo_variable": "c0_upper_cst",
+    "size": 6,
+    "cta_parameters": [
+      "c1_upper_cst_0",
+      "c1_upper_cst_1",
+      "c1_upper_cst_2",
+      "c1_upper_cst_3",
+      "c1_upper_cst_4",
+      "c1_upper_cst_5"
+    ],
+    "units": "-",
+    "normalization": "Bernstein coefficient",
+    "description": "Upper CST coefficients of CTA section C0.",
+    "lower_bounds": [
+      0.35611838008596547,
+      0.28033889224031033,
+      0.2760501993209592,
+      0.1391377839598255,
+      0.0461415925892451,
+      0.0
+    ],
+    "upper_bounds": [
+      0.39541086159348454,
+      0.4601558612848153,
+      0.42650346109126414,
+      0.3012310314598897,
+      0.127171540154187,
+      0.075904942983546
+    ],
+    "reference": [
+      0.375764620839725,
+      0.3702473767625628,
+      0.35127683020611167,
+      0.22018440770985762,
+      0.08665656637171605,
+      0.032
+    ]
+  },
+  {
+    "gemseo_variable": "c0_lower_cst",
+    "size": 6,
+    "cta_parameters": [
+      "c1_lower_cst_0",
+      "c1_lower_cst_1",
+      "c1_lower_cst_2",
+      "c1_lower_cst_3",
+      "c1_lower_cst_4",
+      "c1_lower_cst_5"
+    ],
+    "units": "-",
+    "normalization": "Bernstein coefficient",
+    "description": "Lower CST coefficients of CTA section C0.",
+    "lower_bounds": [
+      0.2785366954572682,
+      0.18989915177521594,
+      0.19466242920239074,
+      0.10638503612510596,
+      0.04426072043551917,
+      0.0
+    ],
+    "upper_bounds": [
+      0.31782917696478785,
+      0.3697161208197233,
+      0.34511569097268746,
+      0.2684782836251616,
+      0.1252906680004572,
+      0.06990494298354616
+    ],
+    "reference": [
+      0.29818293621102804,
+      0.27980763629746963,
+      0.2698890600875391,
+      0.18743165987513377,
+      0.0847756942179882,
+      0.026
+    ]
+  },
+  {
+    "gemseo_variable": "c3_upper_cst",
+    "size": 6,
+    "cta_parameters": [
+      "c2_upper_cst_0",
+      "c2_upper_cst_1",
+      "c2_upper_cst_2",
+      "c2_upper_cst_3",
+      "c2_upper_cst_4",
+      "c2_upper_cst_5"
+    ],
+    "units": "-",
+    "normalization": "Bernstein coefficient",
+    "description": "Upper CST coefficients of CTA section C3.",
+    "lower_bounds": [
+      0.3396592838410485,
+      0.26198125957243457,
+      0.26383326127561796,
+      0.13793338073362493,
+      0.04810618747653164,
+      0.0
+    ],
+    "upper_bounds": [
+      0.3789517653485678,
+      0.4417982286169343,
+      0.41428652304593144,
+      0.3000266282336955,
+      0.1291361350414658,
+      0.0739049429835465
+    ],
+    "reference": [
+      0.35930552459480813,
+      0.35188974409468443,
+      0.3390598921607747,
+      0.21898000448366023,
+      0.08862116125899872,
+      0.03
+    ]
+  },
+  {
+    "gemseo_variable": "c3_lower_cst",
+    "size": 6,
+    "cta_parameters": [
+      "c2_lower_cst_0",
+      "c2_lower_cst_1",
+      "c2_lower_cst_2",
+      "c2_lower_cst_3",
+      "c2_lower_cst_4",
+      "c2_lower_cst_5"
+    ],
+    "units": "-",
+    "normalization": "Bernstein coefficient",
+    "description": "Lower CST coefficients of CTA section C3.",
+    "lower_bounds": [
+      0.265176133106904,
+      0.17572063501945245,
+      0.18131274178927653,
+      0.0991903470916873,
+      0.04240830505685191,
+      0.0
+    ],
+    "upper_bounds": [
+      0.3044686146144233,
+      0.3555376040639564,
+      0.33176600355957425,
+      0.26128359459175204,
+      0.12343825262179095,
+      0.06790494298354627
+    ],
+    "reference": [
+      0.28482237386066367,
+      0.26562911954170443,
+      0.2565393726744254,
+      0.18023697084171966,
+      0.08292327883932143,
+      0.024
+    ]
+  },
+  {
+    "gemseo_variable": "c4_upper_cst",
+    "size": 6,
+    "cta_parameters": [
+      "c3_upper_cst_0",
+      "c3_upper_cst_1",
+      "c3_upper_cst_2",
+      "c3_upper_cst_3",
+      "c3_upper_cst_4",
+      "c3_upper_cst_5"
+    ],
+    "units": "-",
+    "normalization": "Bernstein coefficient",
+    "description": "Upper CST coefficients of CTA section C4.",
+    "lower_bounds": [
+      0.33388230253520684,
+      0.255449262722128,
+      0.25886842535852267,
+      0.14278557733593522,
+      0.052048884089081864,
+      0.0
+    ],
+    "upper_bounds": [
+      0.3655084503668841,
+      0.4255625448772534,
+      0.40714932156215494,
+      0.3001452621957491,
+      0.13239035255939696,
+      0.06840866841945985
+    ],
+    "reference": [
+      0.3496953764510455,
+      0.3405059037996907,
+      0.3330088734603388,
+      0.22146541976584216,
+      0.09221961832423942,
+      0.028
+    ]
+  },
+  {
+    "gemseo_variable": "c4_lower_cst",
+    "size": 6,
+    "cta_parameters": [
+      "c3_lower_cst_0",
+      "c3_lower_cst_1",
+      "c3_lower_cst_2",
+      "c3_lower_cst_3",
+      "c3_lower_cst_4",
+      "c3_lower_cst_5"
+    ],
+    "units": "-",
+    "normalization": "Bernstein coefficient",
+    "description": "Lower CST coefficients of CTA section C4.",
+    "lower_bounds": [
+      0.2596601400305467,
+      0.1710498058099375,
+      0.1756261557176632,
+      0.09852258881212488,
+      0.04157415818407788,
+      0.0
+    ],
+    "upper_bounds": [
+      0.29128628786222366,
+      0.3411630879650686,
+      0.32390705192129726,
+      0.2558822736719378,
+      0.12191562665439477,
+      0.06240866841945974
+    ],
+    "reference": [
+      0.2754732139463852,
+      0.25610644688750306,
+      0.24976660381948024,
+      0.17720243124203133,
+      0.08174489241923633,
+      0.022
+    ]
+  },
+  {
+    "gemseo_variable": "c5_upper_cst",
+    "size": 6,
+    "cta_parameters": [
+      "c4_upper_cst_0",
+      "c4_upper_cst_1",
+      "c4_upper_cst_2",
+      "c4_upper_cst_3",
+      "c4_upper_cst_4",
+      "c4_upper_cst_5"
+    ],
+    "units": "-",
+    "normalization": "Bernstein coefficient",
+    "description": "Upper CST coefficients of CTA section C5.",
+    "lower_bounds": [
+      0.33388230253520684,
+      0.25544926272212554,
+      0.25886842535852084,
+      0.14278557733593122,
+      0.05204888408907881,
+      0.0
+    ],
+    "upper_bounds": [
+      0.3655084503668841,
+      0.42556254487725587,
+      0.4071493215621568,
+      0.3001452621957531,
+      0.13239035255940002,
+      0.06840866841945968
+    ],
+    "reference": [
+      0.3496953764510455,
+      0.3405059037996907,
+      0.3330088734603388,
+      0.22146541976584216,
+      0.09221961832423942,
+      0.028
+    ]
+  },
+  {
+    "gemseo_variable": "c5_lower_cst",
+    "size": 6,
+    "cta_parameters": [
+      "c4_lower_cst_0",
+      "c4_lower_cst_1",
+      "c4_lower_cst_2",
+      "c4_lower_cst_3",
+      "c4_lower_cst_4",
+      "c4_lower_cst_5"
+    ],
+    "units": "-",
+    "normalization": "Bernstein coefficient",
+    "description": "Lower CST coefficients of CTA section C5.",
+    "lower_bounds": [
+      0.2596601400305467,
+      0.17104980580993745,
+      0.17562615571766288,
+      0.09852258881212396,
+      0.04157415818407787,
+      0.0
+    ],
+    "upper_bounds": [
+      0.29128628786222366,
+      0.34116308796506867,
+      0.3239070519212976,
+      0.2558822736719387,
+      0.12191562665439479,
+      0.06240866841945966
+    ],
+    "reference": [
+      0.2754732139463852,
+      0.25610644688750306,
+      0.24976660381948024,
+      0.17720243124203133,
+      0.08174489241923633,
+      0.022
+    ]
+  }
+]

@@ -22,8 +22,8 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-from parametrization.shared.cst import KulfanCSTAirfoil, cosine_spacing
-from parametrization.bwb.design_variables import SectionedBWBDesignVariables
+from parametrization.CTA.core.cst_sharedle import KulfanCSTAirfoil, cosine_spacing
+from parametrization.CTA.core.design_variables import SectionedBWBDesignVariables
 
 
 SECTION_KEYS: Dict[str, Tuple[str, str, str, str, str]] = {
@@ -33,6 +33,12 @@ SECTION_KEYS: Dict[str, Tuple[str, str, str, str, str]] = {
     "c4": ("c4_upper_cst", "c4_lower_cst", "c4_tc_max", "c4_x_tmax", "c4_te_thickness"),
 }
 THICKNESS_CHECK_POINTS = (0.20, 0.30, 0.40, 0.50, 0.60, 0.70)
+
+
+def _trapz_compat(y: np.ndarray, x: np.ndarray) -> float:
+    if hasattr(np, "trapezoid"):
+        return float(np.trapezoid(y, x))
+    return float(np.trapz(y, x))
 
 
 @dataclass
@@ -117,7 +123,7 @@ def _compute_metrics(x: np.ndarray, yu: np.ndarray, yl: np.ndarray) -> Dict[str,
         "x_tmax": float(x_window[idx]),
         "te_thickness": float(thickness[-1]),
         "max_camber": float(np.max(np.abs(camber))),
-        "area": float(np.trapezoid(thickness, x)),
+        "area": _trapz_compat(thickness, x),
     }
     for xc in THICKNESS_CHECK_POINTS:
         key = f"t_xc_{xc:.2f}"

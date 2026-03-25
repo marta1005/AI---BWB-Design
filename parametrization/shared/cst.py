@@ -42,11 +42,13 @@ class KulfanCSTAirfoil:
         n1: float = 0.5,
         n2: float = 1.0,
         x_tc_window: Tuple[float, float] = (0.15, 0.65),
+        shared_leading_edge: bool = False,
     ):
         self.degree = int(degree)
         self.n1 = float(n1)
         self.n2 = float(n2)
         self.x_tc_window = (float(x_tc_window[0]), float(x_tc_window[1]))
+        self.shared_leading_edge = bool(shared_leading_edge)
 
     @property
     def ncoeff(self) -> int:
@@ -62,7 +64,13 @@ class KulfanCSTAirfoil:
         if values.size != expected:
             raise ValueError(f"CST coeff vector must have size {expected}, received {values.size}")
         split = self.ncoeff
-        return values[:split].copy(), values[split:].copy()
+        upper = values[:split].copy()
+        lower = values[split:].copy()
+        if self.shared_leading_edge and upper.size > 0:
+            shared_a0 = 0.5 * (float(upper[0]) + float(lower[0]))
+            upper[0] = shared_a0
+            lower[0] = shared_a0
+        return upper, lower
 
     def _evaluate_zero_te(
         self,
