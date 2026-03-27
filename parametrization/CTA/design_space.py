@@ -62,6 +62,8 @@ CTA_PUBLIC_ACTIVE_BOUNDS: Dict[str, Tuple[float, float]] = {
     "twist_c4_deg": (0.1, 1.0),
 }
 
+_CTA_CST_BOUND_HALF_WIDTHS: Tuple[float, ...] = (0.06, 0.06, 0.05, 0.05, 0.04, 0.03)
+
 _TWIST_PUBLIC_LABELS: Dict[str, str] = {
     "twist_c1_deg": "C0/C3",
     "twist_c3_deg": "C4",
@@ -127,6 +129,24 @@ def _internal_chord_ratio(c0_body_chord: float, absolute_chord: float) -> float:
     return float(float(absolute_chord) / float(c0_body_chord))
 
 
+def _cta_reference_cst_bounds(reference_flat: Dict[str, float]) -> Dict[str, Tuple[float, float]]:
+    bounds: Dict[str, Tuple[float, float]] = {}
+    for name, value in reference_flat.items():
+        match = re.fullmatch(r"c[1-4]_(upper|lower)_cst_(\d+)", name)
+        if match is None:
+            continue
+        coeff_idx = int(match.group(2))
+        if coeff_idx >= len(_CTA_CST_BOUND_HALF_WIDTHS):
+            continue
+        half_width = float(_CTA_CST_BOUND_HALF_WIDTHS[coeff_idx])
+        reference_value = float(value)
+        bounds[name] = (
+            max(0.0, reference_value - half_width),
+            reference_value + half_width,
+        )
+    return bounds
+
+
 def _cta_public_bounds(reference_design: SectionedBWBDesignVariables) -> Dict[str, Tuple[float, float]]:
     bounds = dict(SectionedBWBDesignVariables.default_bounds())
     fixed = cta_fixed_values(reference_design=reference_design)
@@ -181,6 +201,7 @@ def _cta_public_bounds(reference_design: SectionedBWBDesignVariables) -> Dict[st
         float(reference_flat["c3_c1_ratio"]),
     )
     bounds.update(CTA_PUBLIC_ACTIVE_BOUNDS)
+    bounds.update(_cta_reference_cst_bounds(reference_flat))
     for name in CTA_ACTIVE_VARIABLES:
         lower, upper = bounds[name]
         reference_value = float(reference_flat[name])

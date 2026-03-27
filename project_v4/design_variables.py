@@ -1,4 +1,4 @@
-from dataclasses import dataclass, field, fields
+from dataclasses import dataclass, field, fields, replace
 from functools import lru_cache
 from math import comb
 from typing import Dict, Optional, Tuple
@@ -197,76 +197,87 @@ def _paper_section_cst_bounds(
 @dataclass
 class SectionedBWBDesignVariables:
     span: float = 39.5
-    b1_span_ratio: float = 0.18
-    b2_span_ratio: float = 0.12
-    b3_span_ratio: float = 0.70
+    b1_span_ratio: float = 8.0 / 39.5
+    b2_span_ratio: float = 4.0 / 39.5
+    b3_span_ratio: float = 1.0 - (8.0 / 39.5) - (4.0 / 39.5)
 
     le_root_x: float = 0.0
-    c1_root_chord: float = 40.0
-    c2_c1_ratio: float = 0.70
-    c3_c1_ratio: float = 0.23
-    c4_c1_ratio: float = 0.08
-    s1_deg: float = 58.0
-    s2_deg: float = 50.0
-    s3_deg: float = 32.0
+    c1_root_chord: float = 38.0
+    c2_c1_ratio: float = 0.4394736842105263
+    c3_c1_ratio: float = 0.27631578947368424
+    c4_c1_ratio: float = 0.029549147296981385
+    s1_deg: float = 55.864059922087726
+    s2_deg: float = 57.17145820858747
+    s3_deg: float = 30.0
     nose_blend_y: float = 2.50
 
     cst_n1: float = 0.50
     cst_n2: float = 1.00
 
     dihedral_deg: float = 0.0
-    twist_c1_deg: float = 0.0
-    twist_c2_deg: float = 0.0
-    twist_c3_deg: float = -1.0
-    twist_c4_deg: float = -3.0
+    twist_c1_deg: float = 1.0
+    twist_c2_deg: float = 1.0
+    twist_c3_deg: float = 0.8
+    twist_c4_deg: float = 0.6
     camber_c1: float = 0.0
     camber_c2: float = 0.0
     camber_c3: float = 0.0
     camber_c4: float = 0.0
 
-    c1_tc_max: float = 0.22
-    c2_tc_max: float = 0.18
-    c3_tc_max: float = 0.11
-    c4_tc_max: float = 0.08
+    c1_tc_max: float = 0.23
+    c2_tc_max: float = 0.26
+    c3_tc_max: float = 0.20
+    c4_tc_max: float = 0.20
 
     c1_x_tmax: float = 0.33
-    c2_x_tmax: float = 0.31
+    c2_x_tmax: float = 0.33
     c3_x_tmax: float = 0.28
-    c4_x_tmax: float = 0.24
+    c4_x_tmax: float = 0.28
 
     c1_te_thickness: float = 0.0020
-    c2_te_thickness: float = 0.0020
-    c3_te_thickness: float = 0.0015
-    c4_te_thickness: float = 0.0010
+    c2_te_thickness: float = 0.0025
+    c3_te_thickness: float = 0.0023
+    c4_te_thickness: float = 0.0023
 
     c1_upper_cst: Tuple[float, ...] = field(
-        default_factory=lambda: _full_surface_seed(5, 0.24, 0.26, 1.30, 1.7, 0.05)
+        default_factory=lambda: _full_surface_seed(5, 0.295, 0.255, 1.22, 1.85, 0.032)
     )
     c1_lower_cst: Tuple[float, ...] = field(
-        default_factory=lambda: _full_surface_seed(5, 0.13, 0.06, 1.45, 2.7, 0.010)
+        default_factory=lambda: _full_surface_seed(5, 0.240, 0.190, 1.30, 2.00, 0.026)
     )
     c2_upper_cst: Tuple[float, ...] = field(
-        default_factory=lambda: _full_surface_seed(5, 0.20, 0.21, 1.25, 1.8, 0.04)
+        default_factory=lambda: _full_surface_seed(5, 0.285, 0.245, 1.23, 1.90, 0.030)
     )
     c2_lower_cst: Tuple[float, ...] = field(
-        default_factory=lambda: _full_surface_seed(5, 0.11, 0.05, 1.40, 2.7, 0.008)
+        default_factory=lambda: _full_surface_seed(5, 0.230, 0.180, 1.31, 2.02, 0.024)
     )
     c3_upper_cst: Tuple[float, ...] = field(
-        default_factory=lambda: _full_surface_seed(5, 0.14, 0.13, 1.20, 1.9, 0.025)
+        default_factory=lambda: _full_surface_seed(5, 0.280, 0.240, 1.24, 1.95, 0.028)
     )
     c3_lower_cst: Tuple[float, ...] = field(
-        default_factory=lambda: _full_surface_seed(5, 0.075, 0.030, 1.30, 2.8, 0.005)
+        default_factory=lambda: _full_surface_seed(5, 0.225, 0.175, 1.30, 2.05, 0.022)
     )
+    # CTA reference: C4 and C5 use the same non-dimensional airfoil profile.
     c4_upper_cst: Tuple[float, ...] = field(
-        default_factory=lambda: _full_surface_seed(5, 0.11, 0.10, 1.15, 2.0, 0.018)
+        default_factory=lambda: _full_surface_seed(5, 0.280, 0.240, 1.24, 1.95, 0.028)
     )
     c4_lower_cst: Tuple[float, ...] = field(
-        default_factory=lambda: _full_surface_seed(5, 0.055, 0.018, 1.25, 3.0, 0.003)
+        default_factory=lambda: _full_surface_seed(5, 0.225, 0.175, 1.30, 2.05, 0.022)
     )
 
     @classmethod
     def reference_seed(cls) -> "SectionedBWBDesignVariables":
-        return cls()
+        seed = cls()
+        # CTA reference convention: C4 and C5 use the same non-dimensional
+        # thickness/profile definition in the outer wing strip.
+        return replace(
+            seed,
+            c4_tc_max=seed.c3_tc_max,
+            c4_x_tmax=seed.c3_x_tmax,
+            c4_te_thickness=seed.c3_te_thickness,
+            c4_upper_cst=seed.c3_upper_cst,
+            c4_lower_cst=seed.c3_lower_cst,
+        )
 
     @classmethod
     def _tuple_field_map(cls) -> Dict[str, int]:
@@ -294,25 +305,25 @@ class SectionedBWBDesignVariables:
     def default_bounds(cls) -> Dict[str, Tuple[float, float]]:
         bounds = {
             "span": (35.0, 45.0),
-            "b1_span_ratio": (0.16, 0.24),
-            "b2_span_ratio": (0.09, 0.16),
-            "b3_span_ratio": (0.60, 0.75),
+            "b1_span_ratio": (0.18, 0.24),
+            "b2_span_ratio": (0.08, 0.13),
+            "b3_span_ratio": (0.64, 0.74),
             "le_root_x": (-5.0, 8.0),
-            "c1_root_chord": (36.0, 44.0),
-            "c2_c1_ratio": (0.55, 0.85),
-            "c3_c1_ratio": (0.18, 0.28),
-            "c4_c1_ratio": (0.06, 0.09),
-            "s1_deg": (40.0, 60.0),
-            "s2_deg": (40.0, 60.0),
-            "s3_deg": (24.0, 40.0),
+            "c1_root_chord": (36.0, 40.0),
+            "c2_c1_ratio": (0.38, 0.52),
+            "c3_c1_ratio": (0.24, 0.32),
+            "c4_c1_ratio": (0.02, 0.06),
+            "s1_deg": (50.0, 60.0),
+            "s2_deg": (52.0, 62.0),
+            "s3_deg": (28.0, 34.0),
             "nose_blend_y": (1.5, 4.0),
             "cst_n1": (0.45, 0.55),
             "cst_n2": (0.95, 1.10),
             "dihedral_deg": (0.0, 12.0),
-            "twist_c1_deg": (-1.0, 1.0),
-            "twist_c2_deg": (-1.5, 1.0),
-            "twist_c3_deg": (-4.0, 0.0),
-            "twist_c4_deg": (-7.0, -0.5),
+            "twist_c1_deg": (0.2, 2.0),
+            "twist_c2_deg": (0.2, 2.0),
+            "twist_c3_deg": (0.1, 1.8),
+            "twist_c4_deg": (0.1, 1.5),
             "camber_c1": (-0.03, 0.03),
             "camber_c2": (-0.03, 0.03),
             "camber_c3": (-0.03, 0.03),
@@ -428,6 +439,15 @@ class SectionedBWBDesignVariables:
         for label, value in (("s1_deg", self.s1_deg), ("s2_deg", self.s2_deg), ("s3_deg", self.s3_deg)):
             if not (0.0 < value < 85.0):
                 raise ValueError(f"{label} must lie in (0, 85), got {value}")
+
+        for label, value in (
+            ("twist_c1_deg", self.twist_c1_deg),
+            ("twist_c2_deg", self.twist_c2_deg),
+            ("twist_c3_deg", self.twist_c3_deg),
+            ("twist_c4_deg", self.twist_c4_deg),
+        ):
+            if value <= 0.0:
+                raise ValueError(f"{label} must be strictly positive, got {value}")
 
         if self.nose_blend_y <= 0.0:
             raise ValueError(f"nose_blend_y must be positive, got {self.nose_blend_y}")

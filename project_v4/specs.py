@@ -77,11 +77,13 @@ class PlanformSpec:
     s1_deg: float = 55.0
     s2_deg: float = 50.0
     s3_deg: float = 32.0
+    te_aux1_c2_fraction: float = 5.0 / 8.0
+    te_aux2_c2_fraction: float = 7.0 / 8.0
     continuity_order: int = 2
     blend_fraction: float = 0.18
     min_linear_core_fraction: float = 0.75
     symmetry_blend_y: float = 2.50
-    te_exact_segments: Tuple[int, ...] = (0,)
+    te_exact_segments: Tuple[int, ...] = (0, 3)
 
     def validate(self) -> None:
         if self.c1_root_chord <= 0.0:
@@ -109,6 +111,11 @@ class PlanformSpec:
         if any(index < 0 for index in self.te_exact_segments):
             raise ValueError(
                 f"te_exact_segments must contain non-negative segment indices, got {self.te_exact_segments}"
+            )
+        if not (0.0 < self.te_aux1_c2_fraction < self.te_aux2_c2_fraction < 1.0):
+            raise ValueError(
+                "CTA TE auxiliary fractions must satisfy 0 < te_aux1_c2_fraction < "
+                f"te_aux2_c2_fraction < 1, got {(self.te_aux1_c2_fraction, self.te_aux2_c2_fraction)}"
             )
         for label, value in (("s1_deg", self.s1_deg), ("s2_deg", self.s2_deg), ("s3_deg", self.s3_deg)):
             if not (0.0 < value < 85.0):
@@ -138,6 +145,49 @@ class PlanformSpec:
     def trailing_edge_x_sections(self, topology: SectionedBWBTopologySpec) -> np.ndarray:
         return self.leading_edge_x_sections(topology) + self.section_chords()
 
+    def leading_edge_points(self, topology: SectionedBWBTopologySpec) -> np.ndarray:
+        y_sections = topology.y_sections_array
+        le_sections = self.leading_edge_x_sections(topology)
+        return np.column_stack([le_sections, y_sections, np.zeros_like(y_sections)])
+
+    def trailing_edge_points(self, topology: SectionedBWBTopologySpec) -> np.ndarray:
+        y_sections = topology.y_sections_array
+        te_sections = self.trailing_edge_x_sections(topology)
+
+        y_c2 = float(y_sections[1])
+        if y_c2 <= 1e-12:
+            raise ValueError("CTA-style TE auxiliary points require the first main section to lie away from the root")
+
+        y_aux1 = float(self.te_aux1_c2_fraction * y_c2)
+        y_aux2 = float(self.te_aux2_c2_fraction * y_c2)
+
+        te_root = float(te_sections[0])
+        te_c2 = float(te_sections[1])
+        te_c3 = float(te_sections[2])
+        te_tip = float(te_sections[3])
+
+        # CTA reference: the first inboard TE segment is vertical in planform,
+        # so the first auxiliary point keeps the same x-position as the root TE.
+        te_aux1 = te_root
+        # Keep C2 as an auxiliary transition control point for the inboard TE:
+        # place it on the root->C3 secant at y_aux2 so the C2 neighborhood
+        # is handled by the spanwise pyspline transition instead of a hard
+        # local vertical segment.
+        secant_ratio = y_aux2 / y_c2
+        te_aux2 = te_root + secant_ratio * (te_c2 - te_root)
+
+        return np.asarray(
+            [
+                [te_root, 0.0, 0.0],
+                [te_aux1, y_aux1, 0.0],
+                [te_aux2, y_aux2, 0.0],
+                [te_c2, float(y_sections[1]), 0.0],
+                [te_c3, float(y_sections[2]), 0.0],
+                [te_tip, float(y_sections[3]), 0.0],
+            ],
+            dtype=float,
+        )
+
     def validate_with_topology(self, topology: SectionedBWBTopologySpec) -> None:
         le_x = self.leading_edge_x_sections(topology)
         te_x = self.trailing_edge_x_sections(topology)
@@ -147,7 +197,7 @@ class PlanformSpec:
                 "non-positive control-section chord detected; "
                 f"LE={tuple(le_x)}, TE={tuple(te_x)}, chord={tuple(chord)}"
             )
-        segment_count = topology.y_sections_array.size - 1
+        segment_count = self.trailing_edge_points(topology).shape[0] - 1
         if any(index >= segment_count for index in self.te_exact_segments):
             raise ValueError(
                 f"te_exact_segments must lie inside [0, {segment_count - 1}], "
@@ -335,10 +385,11 @@ class SectionFamilySpec:
 @dataclass
 class SpanwiseLawSpec:
     dihedral_deg: float = 0.0
+    vertical_offset_m: float = 0.03
     twist_deg: AnchoredSpanwiseLaw = field(
         default_factory=lambda: AnchoredSpanwiseLaw(
             section_indices=(0, 1, 2, 3),
-            values=(0.0, 0.0, -1.0, -3.0),
+            values=(1.0, 1.0, 0.8, 0.6),
             interpolation="pyspline",
         )
     )
@@ -353,6 +404,8 @@ class SpanwiseLawSpec:
     def validate(self, topology: SectionedBWBTopologySpec) -> None:
         if not (-30.0 <= self.dihedral_deg <= 30.0):
             raise ValueError(f"dihedral_deg must lie in [-30, 30], got {self.dihedral_deg}")
+        if not np.isfinite(self.vertical_offset_m):
+            raise ValueError(f"vertical_offset_m must be finite, got {self.vertical_offset_m}")
         self.twist_deg.validate(topology, "twist_deg")
         self.camber_delta.validate(topology, "camber_delta")
 

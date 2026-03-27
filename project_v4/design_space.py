@@ -25,6 +25,10 @@ def parameter_groups() -> Dict[str, Tuple[str, ...]]:
             "c4_c1_ratio",
         ),
         "sweeps": (
+            "s2_deg",
+            "s3_deg",
+        ),
+        "sweeps_full": (
             "s1_deg",
             "s2_deg",
             "s3_deg",
@@ -559,12 +563,6 @@ def build_design_space(
 
     if reference_design is None:
         reference_design = SectionedBWBDesignVariables.reference_seed()
-    if preset_name == "gemseo_geometry_core" and abs(reference_design.dihedral_deg) > 1e-12:
-        raise ValueError(
-            "Preset 'gemseo_geometry_core' assumes dihedral_deg is fixed to 0.0, "
-            f"got {reference_design.dihedral_deg}"
-        )
-
     groups = parameter_groups()
     active_groups = presets[preset_name]
     active_variables: List[str] = []

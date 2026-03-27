@@ -166,7 +166,7 @@ def build_section_model(
     mask_tc_window = (x_air >= sections.x_tc_window[0]) & (x_air <= sections.x_tc_window[1])
     mask_valid_window = (x_air >= sections.x_valid_window[0]) & (x_air <= sections.x_valid_window[1])
 
-    y_sections = topology.y_sections_array
+    y_sections = topology.anchor_y_array
     section_specs = sections.section_specs
     coeff_sections = np.asarray(
         [np.concatenate([spec.upper_coeffs, spec.lower_coeffs]) for spec in section_specs],

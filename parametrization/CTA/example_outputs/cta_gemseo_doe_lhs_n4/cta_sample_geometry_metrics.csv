@@ -1,5 +1,0 @@
-sample_id,geometry_valid,error_message,profile_generation_mode,section_interpolation,volume_enabled,volume_satisfied,enclosed_volume_m3,required_volume_m3,volume_margin_m3,volume_ratio,mean_cross_section_area_m2,max_cross_section_area_m2,max_cross_section_area_y,min_inner_tc,min_inner_tc_y,min_inner_tc_xc
-0,True,,enforce_targets,pyspline,False,True,0.0,0.0,0.0,1.0,0.0,0.0,0.0,0.003320212918106859,0.0,0.9794098674340965
-1,True,,enforce_targets,pyspline,False,True,0.0,0.0,0.0,1.0,0.0,0.0,0.0,0.0023123129526367134,30.838072990013696,0.9794098674340965
-2,True,,enforce_targets,pyspline,False,True,0.0,0.0,0.0,1.0,0.0,0.0,0.0,0.003319910763410771,13.83778230042304,0.9794098674340965
-3,True,,enforce_targets,pyspline,False,True,0.0,0.0,0.0,1.0,0.0,0.0,0.0,0.004151359366150173,12.161187607454204,0.9794098674340965

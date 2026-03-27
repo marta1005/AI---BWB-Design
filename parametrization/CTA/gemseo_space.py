@@ -231,6 +231,13 @@ def _cta_gemseo_variable_specs() -> Tuple[CTAGemseoVariableSpec, ...]:
             description="CTA transition-wing chord C3.",
         ),
         CTAGemseoVariableSpec(
+            name="c4_outer_wing_chord",
+            cta_parameters=("c3_c1_ratio",),
+            units="m",
+            normalization="absolute",
+            description="CTA outer-wing chord C4.",
+        ),
+        CTAGemseoVariableSpec(
             name="b2_wing_fraction",
             cta_parameters=("b2_span_ratio",),
             units="-",
@@ -253,10 +260,10 @@ def _cta_gemseo_variable_specs() -> Tuple[CTAGemseoVariableSpec, ...]:
         ),
         CTAGemseoVariableSpec(
             name="twist_deg",
-            cta_parameters=("twist_c1_deg", "twist_c2_deg", "twist_c3_deg", "twist_c4_deg"),
+            cta_parameters=("twist_c1_deg", "twist_c3_deg", "twist_c4_deg"),
             units="deg",
             normalization="angle",
-            description="Twist values at CTA sections C0, C3, C4 and C5.",
+            description="Twist values at CTA sections C0/C3, C4 and C5.",
         ),
         CTAGemseoVariableSpec(
             name="c0_upper_cst",

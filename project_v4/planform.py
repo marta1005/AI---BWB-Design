@@ -2,6 +2,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from .dependency_setup import load_pyspline_curve
 from .specs import PlanformSpec
 from .topology import SectionedBWBTopologySpec
 
@@ -80,6 +81,64 @@ def smooth_transition(
     return quintic_c2_transition(y, y0, y1, x0, x1, dx0, dx1)
 
 
+def pyspline_transition(
+    y0: float,
+    y1: float,
+    x0: float,
+    x1: float,
+    dx0: float,
+    dx1: float,
+    continuity_order: int,
+):
+    length = max(y1 - y0, 1e-12)
+    pad = 0.5 * length
+    y_mid = 0.5 * (y0 + y1)
+    x_mid = smooth_transition(
+        y=y_mid,
+        y0=y0,
+        y1=y1,
+        x0=x0,
+        x1=x1,
+        dx0=dx0,
+        dx1=dx1,
+        continuity_order=continuity_order,
+    )
+
+    support_y = np.asarray(
+        (
+            y0 - pad,
+            y0,
+            y_mid,
+            y1,
+            y1 + pad,
+        ),
+        dtype=float,
+    )
+    support_x = np.asarray(
+        (
+            x0 - dx0 * pad,
+            x0,
+            x_mid,
+            x1,
+            x1 + dx1 * pad,
+        ),
+        dtype=float,
+    )
+    if np.allclose(support_x, support_x[0], atol=1e-12, rtol=1e-12):
+        return float(support_x[0])
+    Curve = load_pyspline_curve(rebuild_if_needed=True)
+    return Curve(x=support_x, s=support_y, k=min(4, support_x.size))
+
+
+def span_transition(
+    y: float,
+    curve: object,
+) -> float:
+    if isinstance(curve, (float, np.floating)):
+        return float(curve)
+    return float(np.asarray(curve(float(y))).reshape(-1)[0])
+
+
 class PiecewiseLinearAxis:
     def __init__(self, points: np.ndarray):
         pts = np.asarray(points, dtype=float)
@@ -116,6 +175,7 @@ class SegmentedSpanAxis:
         self.interior_ids = np.arange(1, self.y.size - 1, dtype=int)
         self.widths_left = np.zeros_like(self.y)
         self.widths_right = np.zeros_like(self.y)
+        self._transition_cache = {}
 
         for idx in self.interior_ids:
             dy_left = self.y[idx] - self.y[idx - 1]
@@ -160,15 +220,29 @@ class SegmentedSpanAxis:
             return float(self.x[node_idx])
         y0 = float(self.y[node_idx] - left_width)
         y1 = float(self.y[node_idx] + right_width)
-        return smooth_transition(
+        cache_key = (
+            node_idx,
+            y0,
+            y1,
+            float(self._line(node_idx - 1, y0)),
+            float(self._line(node_idx, y1)),
+            float(self.slopes[node_idx - 1]),
+            float(self.slopes[node_idx]),
+            self.continuity_order,
+        )
+        if cache_key not in self._transition_cache:
+            self._transition_cache[cache_key] = pyspline_transition(
+                y0=y0,
+                y1=y1,
+                x0=float(self._line(node_idx - 1, y0)),
+                x1=float(self._line(node_idx, y1)),
+                dx0=float(self.slopes[node_idx - 1]),
+                dx1=float(self.slopes[node_idx]),
+                continuity_order=self.continuity_order,
+            )
+        return span_transition(
             y=y,
-            y0=y0,
-            y1=y1,
-            x0=self._line(node_idx - 1, y0),
-            x1=self._line(node_idx, y1),
-            dx0=float(self.slopes[node_idx - 1]),
-            dx1=float(self.slopes[node_idx]),
-            continuity_order=self.continuity_order,
+            curve=self._transition_cache[cache_key],
         )
 
     def __call__(self, y: float) -> float:
@@ -203,6 +277,7 @@ class SymmetryRootBlendAxis:
         self.target_slope = float(target_slope)
         self.blend_y = float(max(blend_y, 0.0))
         self.continuity_order = int(continuity_order)
+        self._curve = None
 
     def __call__(self, y: float) -> float:
         y_abs = abs(float(y))
@@ -211,16 +286,29 @@ class SymmetryRootBlendAxis:
         if self.blend_y <= 1e-12 or y_abs >= self.blend_y:
             return float(self.base_axis(y_abs))
         x1 = float(self.base_axis(self.blend_y))
-        return smooth_transition(
-            y=y_abs,
-            y0=0.0,
-            y1=self.blend_y,
-            x0=self.root_x,
-            x1=x1,
-            dx0=0.0,
-            dx1=self.target_slope,
-            continuity_order=self.continuity_order,
-        )
+        if self._curve is None:
+            pad = 0.5 * self.blend_y
+            y_mid = 0.35 * self.blend_y
+            x_mid = smooth_transition(
+                y=y_mid,
+                y0=0.0,
+                y1=self.blend_y,
+                x0=self.root_x,
+                x1=x1,
+                dx0=0.0,
+                dx1=self.target_slope,
+                continuity_order=self.continuity_order,
+            )
+            Curve = load_pyspline_curve(rebuild_if_needed=True)
+            support_y = np.asarray((0.0, y_mid, self.blend_y, self.blend_y + pad), dtype=float)
+            support_x = np.asarray((self.root_x, x_mid, x1, x1 + self.target_slope * pad), dtype=float)
+            if np.allclose(support_x, support_x[0], atol=1e-12, rtol=1e-12):
+                self._curve = float(support_x[0])
+            else:
+                self._curve = Curve(x=support_x, s=support_y, k=min(4, support_x.size))
+        if isinstance(self._curve, (float, np.floating)):
+            return float(self._curve)
+        return float(np.asarray(self._curve(y_abs)).reshape(-1)[0])
 
 
 @dataclass
@@ -241,12 +329,10 @@ def build_sectioned_bwb_planform(
     topology: SectionedBWBTopologySpec,
     planform: PlanformSpec,
 ) -> SectionedPlanform:
-    y_sections = topology.y_sections_array
+    le_points = planform.leading_edge_points(topology)
+    te_points = planform.trailing_edge_points(topology)
     le_sections = planform.leading_edge_x_sections(topology)
     te_sections = planform.trailing_edge_x_sections(topology)
-
-    le_points = np.column_stack([le_sections, y_sections, np.zeros_like(y_sections)])
-    te_points = np.column_stack([te_sections, y_sections, np.zeros_like(y_sections)])
 
     le_axis = SegmentedSpanAxis(
         le_points,

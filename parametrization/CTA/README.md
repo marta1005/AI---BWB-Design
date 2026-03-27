@@ -10,16 +10,17 @@ This folder contains the CTA-only parametrization and design-space setup on top 
 - CTA GEMSEO adapter: `parametrization/CTA/gemseo_space.py`
 - CTA GEMSEO requirements: `parametrization/CTA/requirements-gemseo.txt`
 - Docs: `parametrization/CTA/docs/README.md`
-- Generated bounds tables and plots are rebuilt on demand from the example scripts.
-- Examples:
-  - `parametrization/CTA/examples/export_cta_bounds_table.py`
-  - `parametrization/CTA/examples/export_cta_gemseo_bounds_table.py`
-  - `parametrization/CTA/examples/inspect_cta_gemseo_design_space.py`
-  - `parametrization/CTA/examples/sample_cta_gemseo_doe.py`
-  - `parametrization/CTA/examples/profile_parametrization_lab.py`
-  - `parametrization/CTA/examples/plot_cta_reference_views.py`
-  - `parametrization/CTA/examples/show_cta_reference_3d.py`
-  - `parametrization/CTA/examples/run_reference_iges.py`
+- Generated bounds tables and plots are rebuilt on demand from the helper scripts in `parametrization/CTA/codes/`.
+- Generated files live under `parametrization/CTA/outputs/`.
+- Codes:
+  - `parametrization/CTA/codes/export_cta_bounds_table.py`
+  - `parametrization/CTA/codes/export_cta_gemseo_bounds_table.py`
+  - `parametrization/CTA/codes/inspect_cta_gemseo_design_space.py`
+  - `parametrization/CTA/codes/sample_cta_gemseo_doe.py`
+  - `parametrization/CTA/codes/profile_parametrization_lab.py`
+  - `parametrization/CTA/codes/plot_cta_reference_views.py`
+  - `parametrization/CTA/codes/show_cta_reference_3d.py`
+  - `parametrization/CTA/codes/run_reference_iges.py`
 
 ## How CTA Geometry Reaches pyGeo
 

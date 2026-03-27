@@ -356,6 +356,16 @@ def _gemseo_variable_specs(active_groups: Tuple[str, ...]) -> Tuple[GemseoVariab
             specs.append(
                 GemseoVariableSpec(
                     name="sweeps_deg",
+                    project_parameters=("s2_deg", "s3_deg"),
+                    units="deg",
+                    normalization="angle",
+                    description="Leading-edge sweep angles S2 and S3 (S1 is fixed in this design space).",
+                )
+            )
+        elif group_name == "sweeps_full":
+            specs.append(
+                GemseoVariableSpec(
+                    name="sweeps_deg",
                     project_parameters=("s1_deg", "s2_deg", "s3_deg"),
                     units="deg",
                     normalization="angle",

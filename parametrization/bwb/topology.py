@@ -69,3 +69,9 @@ class SectionedBWBTopologySpec:
             raise ValueError("anchor_y must be strictly increasing and non-empty")
         if anchor_y[0] < 0.0 or anchor_y[-1] > self.span:
             raise ValueError("anchor_y must remain inside [0, span]")
+        if not np.isclose(anchor_y[0], 0.0):
+            raise ValueError(f"anchor_y must start at 0.0, got {anchor_y[0]:.6f}")
+        if not np.isclose(anchor_y[-1], self.span):
+            raise ValueError(
+                f"anchor_y must end at span={self.span:.6f}, got {anchor_y[-1]:.6f}"
+            )

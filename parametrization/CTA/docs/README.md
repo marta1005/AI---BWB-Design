@@ -75,21 +75,21 @@ The adapter can be used in two modes:
 Public CTA bounds:
 
 ```bash
-python parametrization/CTA/examples/export_cta_bounds_table.py
+python parametrization/CTA/codes/export_cta_bounds_table.py
 ```
 
 GEMSEO grouped bounds:
 
 ```bash
-python parametrization/CTA/examples/export_cta_gemseo_bounds_table.py
-python parametrization/CTA/examples/inspect_cta_gemseo_design_space.py
+python parametrization/CTA/codes/export_cta_gemseo_bounds_table.py
+python parametrization/CTA/codes/inspect_cta_gemseo_design_space.py
 ```
 
 Geometry export:
 
 ```bash
-python parametrization/CTA/examples/run_reference_iges.py
-python parametrization/CTA/examples/plot_cta_reference_views.py
+python parametrization/CTA/codes/run_reference_iges.py
+python parametrization/CTA/codes/plot_cta_reference_views.py
 ```
 
 ## How CTA Parameters Reach pyGeo
@@ -122,5 +122,5 @@ DOE sampling with GEMSEO, once installed:
 
 ```bash
 python -m pip install -r parametrization/CTA/requirements-gemseo.txt
-python parametrization/CTA/examples/sample_cta_gemseo_doe.py --n-samples 16 --algo LHS
+python parametrization/CTA/codes/sample_cta_gemseo_doe.py --n-samples 16 --algo LHS
 ```

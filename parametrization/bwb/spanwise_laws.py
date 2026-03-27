@@ -52,9 +52,9 @@ def build_anchored_interpolant(
     topology: SectionedBWBTopologySpec,
     law: AnchoredSpanwiseLaw,
 ):
-    y_sections = topology.y_sections_array[np.asarray(law.section_indices, dtype=int)]
+    anchor_y = topology.anchor_y_array[np.asarray(law.section_indices, dtype=int)]
     values = np.asarray(law.values, dtype=float)
-    return build_scalar_interpolant(y_sections, values, law.interpolation)
+    return build_scalar_interpolant(anchor_y, values, law.interpolation)
 
 
 def resolve_spanwise_laws(config: SectionedBWBModelConfig) -> ResolvedSpanwiseLaws:
@@ -68,4 +68,7 @@ def vertical_offsets(
     span_stations: np.ndarray,
 ) -> np.ndarray:
     span_z = np.asarray(span_stations, dtype=float)
+    if spanwise.vertical_offset_z is not None:
+        interpolant = build_anchored_interpolant(topology, spanwise.vertical_offset_z)
+        return np.asarray([interpolant(float(yy)) for yy in span_z], dtype=float)
     return float(spanwise.vertical_offset_m) + np.tan(np.deg2rad(spanwise.dihedral_deg)) * span_z

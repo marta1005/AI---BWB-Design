@@ -320,7 +320,7 @@ class AnchoredSpanwiseLaw:
                 f"{label}.interpolation must be 'linear', 'pchip', 'cubic' or 'pyspline', "
                 f"got {self.interpolation!r}"
             )
-        section_count = topology.y_sections_array.size
+        section_count = topology.anchor_y_array.size
         if any(index < 0 or index >= section_count for index in self.section_indices):
             raise ValueError(
                 f"{label}.section_indices must lie inside [0, {section_count - 1}], "
@@ -377,6 +377,7 @@ class SectionFamilySpec:
             te_thickness=0.001,
         )
     )
+    section_specs_override: Optional[Tuple[SectionCSTSpec, ...]] = None
     profile_relations: Tuple[SectionProfileRelationSpec, ...] = field(
         default_factory=lambda: (
             SectionProfileRelationSpec(),
@@ -395,11 +396,13 @@ class SectionFamilySpec:
         return 2 * self.ncoeff
 
     @property
-    def base_section_specs(self) -> Tuple[SectionCSTSpec, SectionCSTSpec, SectionCSTSpec, SectionCSTSpec]:
+    def base_section_specs(self) -> Tuple[SectionCSTSpec, ...]:
+        if self.section_specs_override is not None:
+            return tuple(self.section_specs_override)
         return (self.c1_spec, self.c2_spec, self.c3_spec, self.c4_spec)
 
     @property
-    def section_specs(self) -> Tuple[SectionCSTSpec, SectionCSTSpec, SectionCSTSpec, SectionCSTSpec]:
+    def section_specs(self) -> Tuple[SectionCSTSpec, ...]:
         resolved = [replace(spec) for spec in self.base_section_specs]
         if len(self.profile_relations) != len(resolved):
             raise ValueError(
@@ -470,19 +473,20 @@ class SectionFamilySpec:
         for idx, relation in enumerate(self.profile_relations):
             relation.validate(f"profile_relations[{idx}]", idx, len(base_specs))
         for idx, spec in enumerate(base_specs, start=1):
-            spec.validate(f"c{idx}_spec", expected_size)
+            spec.validate(f"section_spec[{idx - 1}]", expected_size)
             if not (self.x_tc_window[0] <= spec.x_tmax <= self.x_tc_window[1]):
                 raise ValueError(
-                    f"c{idx}_spec.x_tmax={spec.x_tmax} must lie inside x_tc_window={self.x_tc_window}"
+                    f"section_spec[{idx - 1}].x_tmax={spec.x_tmax} must lie inside x_tc_window={self.x_tc_window}"
                 )
         for idx, spec in enumerate(self.section_specs, start=1):
-            spec.validate(f"resolved_c{idx}_spec", expected_size)
+            spec.validate(f"resolved_section_spec[{idx - 1}]", expected_size)
 
 
 @dataclass
 class SpanwiseLawSpec:
     dihedral_deg: float = 0.0
     vertical_offset_m: float = 0.03
+    vertical_offset_z: Optional[AnchoredSpanwiseLaw] = None
     twist_deg: AnchoredSpanwiseLaw = field(
         default_factory=lambda: AnchoredSpanwiseLaw(
             section_indices=(0, 1, 2, 3),
@@ -503,6 +507,8 @@ class SpanwiseLawSpec:
             raise ValueError(f"dihedral_deg must lie in [-30, 30], got {self.dihedral_deg}")
         if not np.isfinite(self.vertical_offset_m):
             raise ValueError(f"vertical_offset_m must be finite, got {self.vertical_offset_m}")
+        if self.vertical_offset_z is not None:
+            self.vertical_offset_z.validate(topology, "vertical_offset_z")
         self.twist_deg.validate(topology, "twist_deg")
         self.camber_delta.validate(topology, "camber_delta")
 
@@ -589,9 +595,9 @@ class SectionedBWBModelConfig:
         self.sampling.validate()
         self.export.validate()
         self.volume.validate(self.topology)
-        section_count = self.topology.y_sections_array.size
+        section_count = self.topology.anchor_y_array.size
         if len(self.sections.section_specs) != section_count:
             raise ValueError(
-                "section CST specs must match topology.y_sections, "
+                "section CST specs must match topology.anchor_y, "
                 f"got {len(self.sections.section_specs)} specs for {section_count} sections"
             )

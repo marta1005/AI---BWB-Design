@@ -68,4 +68,4 @@ def vertical_offsets(
     span_stations: np.ndarray,
 ) -> np.ndarray:
     span_z = np.asarray(span_stations, dtype=float)
-    return np.tan(np.deg2rad(spanwise.dihedral_deg)) * span_z
+    return float(spanwise.vertical_offset_m) + np.tan(np.deg2rad(spanwise.dihedral_deg)) * span_z

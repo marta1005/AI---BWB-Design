@@ -1,5 +1,8 @@
 .DS_Store
+.mplconfig/
+.venv
 .venv/
+profiles_out/
 __pycache__/
 *.pyc
 *.pyo

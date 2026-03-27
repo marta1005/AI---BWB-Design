@@ -152,88 +152,120 @@ def main() -> None:
         constrained_layout=True,
         gridspec_kw={"height_ratios": (3.2, 2.0)},
     )
-    ax.fill_betweenx(dense_span, leading_edge_x, trailing_edge_x, color="#dce7f1", zorder=1)
-    ax.fill_betweenx(-dense_span, leading_edge_x, trailing_edge_x, color="#dce7f1", zorder=1)
+    y_sections = config.topology.y_sections_array
+    le_sections = config.planform.leading_edge_x_sections(config.topology)
+    te_sections = config.planform.trailing_edge_x_sections(config.topology)
+    te_points = config.planform.trailing_edge_points(config.topology)
+    chords = te_sections - le_sections
+
+    section_labels = ("C1", "C2", "C3", "C4")
+    zone_defs = (
+        ("Centre Body", float(y_sections[0]), float(y_sections[1]), "#fde68a"),
+        ("Transition Wing", float(y_sections[1]), float(y_sections[2]), "#bfdbfe"),
+        ("Outer Wing", float(y_sections[2]), float(y_sections[3]), "#bbf7d0"),
+    )
+    for zone_name, y0, y1, zone_color in zone_defs:
+        mask = (dense_span >= y0) & (dense_span <= y1)
+        ax.fill_betweenx(
+            dense_span[mask],
+            leading_edge_x[mask],
+            trailing_edge_x[mask],
+            color=zone_color,
+            alpha=0.68,
+            zorder=1,
+            label=zone_name,
+        )
+        ax.fill_betweenx(
+            -dense_span[mask],
+            leading_edge_x[mask],
+            trailing_edge_x[mask],
+            color=zone_color,
+            alpha=0.25,
+            zorder=1,
+        )
     ax.plot(leading_edge_x, dense_span, color="#0f4c5c", linewidth=2.2, label="LE", zorder=3)
     ax.plot(trailing_edge_x, dense_span, color="#c44536", linewidth=2.2, label="TE", zorder=3)
     ax.plot(leading_edge_x, -dense_span, color="#0f4c5c", linewidth=2.2, zorder=3)
     ax.plot(trailing_edge_x, -dense_span, color="#c44536", linewidth=2.2, zorder=3)
 
-    y_sections = config.topology.y_sections_array
-    le_sections = config.planform.leading_edge_x_sections(config.topology)
-    te_sections = config.planform.trailing_edge_x_sections(config.topology)
-    chords = te_sections - le_sections
-    section_labels = ("C1 / root", "C2 / B1", "C3 / B1+B2", "C4 / tip")
-    te_exact_y = np.array([float(y_sections[0]), float(y_sections[1])], dtype=float)
-    te_exact_x = np.array([float(te_sections[0]), float(te_sections[1])], dtype=float)
-
-    for label, y, le_x, te_x, _ in zip(section_labels, y_sections, le_sections, te_sections, chords):
-        ax.plot([le_x, te_x], [y, y], color="#7a8fa3", linewidth=1.1, alpha=0.9, zorder=2)
-        ax.plot([le_x, te_x], [-y, -y], color="#7a8fa3", linewidth=1.1, alpha=0.25, zorder=2)
-        ax.scatter([le_x, te_x], [y, y], color=["#0f4c5c", "#c44536"], s=20, zorder=4)
-
-    ax.plot(
-        te_exact_x,
-        te_exact_y,
-        color="#111827",
-        linewidth=3.0,
-        linestyle=(0, (6, 4)),
-        label="TE exact straight segment C0->C1",
-        zorder=5,
-    )
-    ax.plot(
-        te_exact_x,
-        -te_exact_y,
-        color="#111827",
-        linewidth=3.0,
-        linestyle=(0, (6, 4)),
-        zorder=5,
-    )
-    te_mid_x = float(np.mean(te_exact_x))
-    te_mid_y = float(np.mean(te_exact_y))
-    ax.text(
-        te_mid_x + 1.2,
-        te_mid_y + 0.9,
-        "TE C0->C1\nexact straight",
-        fontsize=8.2,
-        color="#111827",
-        ha="left",
-        va="bottom",
-        bbox={"boxstyle": "round,pad=0.16", "facecolor": "white", "edgecolor": "#d1d5db", "alpha": 0.92},
-        zorder=6,
+    c_names = ("C0", "C1", "C2", "C3", "C4", "C5")
+    c_y = te_points[:, 1].astype(float)
+    c_te_x = te_points[:, 0].astype(float)
+    c_le_x = np.array([planform.le_x(float(value)) for value in c_y], dtype=float)
+    c_chords = c_te_x - c_le_x
+    te_exact_segments = (
+        (
+            np.array([float(te_points[0, 0]), float(te_points[1, 0])], dtype=float),
+            np.array([float(te_points[0, 1]), float(te_points[1, 1])], dtype=float),
+            "TE exact straight segment C0->C1",
+            "TE C0->C1\nexact straight",
+            (1.2, 0.9),
+        ),
+        (
+            np.array([float(te_points[3, 0]), float(te_points[4, 0])], dtype=float),
+            np.array([float(te_points[3, 1]), float(te_points[4, 1])], dtype=float),
+            "TE exact straight segment C3->C4",
+            "TE C3->C4\nexact straight",
+            (1.2, 0.7),
+        ),
     )
 
-    station_note_x = float(np.max(trailing_edge_x) + 4.0)
-    section_note_y = np.array(
-        [
-            max(1.8, float(y_sections[0]) + 1.8),
-            float(y_sections[1]) + 1.9,
-            float(y_sections[2]) + 2.4,
-            float(y_sections[3]) - 1.8,
-        ],
-        dtype=float,
-    )
-    for idx, (label, y, chord) in enumerate(zip(section_labels, y_sections, chords)):
-        y_note = float(section_note_y[idx])
-        ax.plot(
-            [float(planform.te_x(y)) + 0.2, station_note_x - 0.2],
-            [float(y), y_note],
-            color="#9fb3c8",
-            linewidth=0.8,
-            linestyle=":",
-            zorder=0,
-        )
+    for name, y, le_x, te_x, chord in zip(c_names, c_y, c_le_x, c_te_x, c_chords):
+        ax.plot([le_x, te_x], [y, y], color="#64748b", linewidth=1.0, alpha=0.9, zorder=2)
+        ax.plot([le_x, te_x], [-y, -y], color="#64748b", linewidth=1.0, alpha=0.22, zorder=2)
+        ax.scatter([le_x, te_x], [y, y], color=["#0f4c5c", "#c44536"], s=16, zorder=4)
         ax.text(
-            station_note_x,
-            y_note,
-            f"{label}: y={float(y):.2f} m | c={float(chord):.2f} m",
-            fontsize=8.3,
-            color="#243b53",
+            te_x + 0.35,
+            y + 0.18,
+            f"{name}: y={y:.2f} m, c={chord:.2f} m",
+            fontsize=8.0,
+            color="#334155",
+            ha="left",
             va="center",
-            bbox={"boxstyle": "round,pad=0.16", "facecolor": "white", "edgecolor": "none", "alpha": 0.82},
+            bbox={"boxstyle": "round,pad=0.14", "facecolor": "white", "edgecolor": "none", "alpha": 0.80},
+            zorder=6,
         )
 
-    add_sweep_label(ax, le_sections[0], y_sections[0], le_sections[1], y_sections[1], f"S1 = {config.planform.s1_deg:.1f} deg")
+    for exact_x, exact_y, legend_label, text_label, text_offset in te_exact_segments:
+        ax.plot(
+            exact_x,
+            exact_y,
+            color="#111827",
+            linewidth=3.0,
+            linestyle=(0, (6, 4)),
+            label=legend_label,
+            zorder=5,
+        )
+        ax.plot(
+            exact_x,
+            -exact_y,
+            color="#111827",
+            linewidth=3.0,
+            linestyle=(0, (6, 4)),
+            zorder=5,
+        )
+        te_mid_x = float(np.mean(exact_x))
+        te_mid_y = float(np.mean(exact_y))
+        ax.text(
+            te_mid_x + float(text_offset[0]),
+            te_mid_y + float(text_offset[1]),
+            text_label,
+            fontsize=8.2,
+            color="#111827",
+            ha="left",
+            va="bottom",
+            bbox={"boxstyle": "round,pad=0.16", "facecolor": "white", "edgecolor": "#d1d5db", "alpha": 0.92},
+            zorder=6,
+        )
+
+    add_sweep_label(
+        ax,
+        le_sections[0],
+        y_sections[0],
+        le_sections[1],
+        y_sections[1],
+        f"S1 fixed = {config.planform.s1_deg:.1f} deg",
+    )
     add_sweep_label(ax, le_sections[1], y_sections[1], le_sections[2], y_sections[2], f"S2 = {config.planform.s2_deg:.1f} deg")
     add_sweep_label(ax, le_sections[2], y_sections[2], le_sections[3], y_sections[3], f"S3 = {config.planform.s3_deg:.1f} deg")
 
@@ -260,29 +292,11 @@ def main() -> None:
         f"B3 = {config.topology.b3_span_ratio:.2f} b/2\n({float(y_sections[3] - y_sections[2]):.2f} m)",
     )
 
-    status_text = (
-        f"Full CST 6+6 at C1/C2/C3/C4 | N1={config.sections.n1:.2f}, N2={config.sections.n2:.2f}\n"
-        f"profile mode = {config.sections.profile_generation_mode}\n"
-        f"tc refs = ({design.c1_tc_max:.3f}, {design.c2_tc_max:.3f}, {design.c3_tc_max:.3f}, {design.c4_tc_max:.3f})\n"
-        f"x_tmax refs = ({design.c1_x_tmax:.3f}, {design.c2_x_tmax:.3f}, {design.c3_x_tmax:.3f}, {design.c4_x_tmax:.3f})\n"
-        f"Twist anchors [deg] = {tuple(config.spanwise.twist_deg.values)}\n"
-        f"min inner t/c = {prepared.validation.min_inner_tc:.3f}"
-    )
-    ax.text(
-        float(np.min(leading_edge_x) + 1.0),
-        float(-config.topology.span * 0.90),
-        status_text,
-        fontsize=8.5,
-        color="#263238",
-        va="bottom",
-        bbox={"boxstyle": "round,pad=0.22", "facecolor": "white", "edgecolor": "#cfd8dc", "alpha": 0.9},
-    )
-
     ax.axhline(0.0, color="#9fb3c8", linewidth=0.9, linestyle="--", zorder=0)
     ax.set_aspect("equal", adjustable="box")
     ax.set_xlabel("x / chord direction")
     ax.set_ylabel("spanwise y")
-    ax.set_title("project_v4 BWB planform (true scale)")
+    ax.set_title("CTA reference planform (platform parameters only)")
     ax.legend(loc="upper left")
     ax.grid(True, linewidth=0.4, alpha=0.25)
 
@@ -290,7 +304,7 @@ def main() -> None:
     chord_min = float(np.min(leading_edge_x))
     chord_max = float(np.max(trailing_edge_x))
     chord_margin = 0.06 * (chord_max - chord_min)
-    ax.set_xlim(bracket_x - 1.2, station_note_x + 8.0)
+    ax.set_xlim(bracket_x - 1.2, float(np.max(c_te_x) + 9.0))
     ax.set_ylim(-(config.topology.span + span_margin), config.topology.span + span_margin)
     upper = np.empty_like(dense_span)
     lower = np.empty_like(dense_span)
@@ -315,49 +329,34 @@ def main() -> None:
     ax_front.plot(dense_span, vertical_center, color="#475569", linewidth=1.1, linestyle="--", label="LE height", zorder=4)
     ax_front.plot(dense_span, te_center, color="#c44536", linewidth=1.4, label="TE height with twist", zorder=4)
 
-    section_upper = np.interp(y_sections, dense_span, upper)
-    section_lower = np.interp(y_sections, dense_span, lower)
-    section_te = np.interp(y_sections, dense_span, te_center)
-    section_label_y = np.array(
-        [
-            float(np.max(upper) - 0.45),
-            float(np.min(lower) + 0.55),
-            float(np.max(upper) - 0.95),
-            float(np.min(lower) + 0.85),
-        ],
-        dtype=float,
-    )
-    section_label_x_offset = np.array([1.3, 1.6, 1.7, -2.4], dtype=float)
-    for idx, (label, y, y_top, y_bot, y_te, y_center_here, y_note, x_offset) in enumerate(
-        zip(
-            section_labels,
-            y_sections,
-            section_upper,
-            section_lower,
-            section_te,
-            np.interp(y_sections, dense_span, vertical_center),
-            section_label_y,
-            section_label_x_offset,
-        )
+    c_upper = np.interp(c_y, dense_span, upper)
+    c_lower = np.interp(c_y, dense_span, lower)
+    c_te = np.interp(c_y, dense_span, te_center)
+    for name, y, y_top, y_bot, y_te, y_center_here in zip(
+        c_names,
+        c_y,
+        c_upper,
+        c_lower,
+        c_te,
+        np.interp(c_y, dense_span, vertical_center),
     ):
-        x_note = float(y + x_offset)
-        ax_front.plot([float(y), float(y)], [float(y_bot), float(y_top)], color="#64748b", linewidth=0.9, linestyle="--", zorder=2)
-        ax_front.scatter([float(y), float(y)], [float(y_center_here), float(y_te)], color=["#475569", "#c44536"], s=18, zorder=5)
-        ax_front.plot([float(y), x_note], [float(y_te), float(y_note)], color="#94a3b8", linewidth=0.8, linestyle=":", zorder=1)
+        ax_front.plot([float(y), float(y)], [float(y_bot), float(y_top)], color="#64748b", linewidth=0.85, linestyle="--", zorder=2)
+        ax_front.scatter([float(y), float(y)], [float(y_center_here), float(y_te)], color=["#475569", "#c44536"], s=14, zorder=5)
         ax_front.text(
-            x_note,
-            float(y_note),
-            f"{label}\n{float(config.spanwise.twist_deg.values[idx]):.1f} deg",
-            fontsize=8.1,
+            float(y),
+            float(y_top + 0.20),
+            name,
+            fontsize=9.0,
             color="#334155",
             ha="center",
-            va="center",
-            bbox={"boxstyle": "round,pad=0.16", "facecolor": "white", "edgecolor": "none", "alpha": 0.78},
+            va="bottom",
+            bbox={"boxstyle": "round,pad=0.12", "facecolor": "white", "edgecolor": "none", "alpha": 0.80},
+            zorder=6,
         )
 
     ax_front.axhline(0.0, color="#94a3b8", linewidth=0.9, linestyle=":")
     ax_front.axvline(0.0, color="#94a3b8", linewidth=0.9, linestyle=":")
-    ax_front.set_title("Front view with twist projection (true scale)", pad=12)
+    ax_front.set_title("Front view (CTA station nomenclature)", pad=12)
     ax_front.set_xlabel("semispan y")
     ax_front.set_ylabel("vertical")
     ax_front.grid(True, linewidth=0.4, alpha=0.3)
