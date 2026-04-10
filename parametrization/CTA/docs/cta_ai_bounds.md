@@ -6,7 +6,7 @@
 - `B1` (`b1_fixed_m`): `8.041` m
 - `C1` conditioned by fixed `S` and straight `TE(C0->C1)`
 - no public `C2`: the inboard `TE(C1->C3)` blend is built with a hidden helper point
-- `C3` and `C4` are active chord variables
+- `C3` is an active chord variable and `C4` is driven by the transition taper ratio `C4/C3`
 - `TE(C3->C4)` is smooth and not constrained to remain straight
 - `twist` is constant from Section 0 through Section 3
 - `te_exact_segments`: `(0, 4)`
@@ -15,14 +15,15 @@
 
 | Parameter | Display Name | Symbol | Units | Lower | Reference | Upper |
 | --- | --- | --- | --- | --- | --- | --- |
-| span | Wing span | B2+B3 | m | 30 | 31.459 | 35 |
-| c1_root_chord | Body chord | C0 | m | 37 | 41.203 | 45 |
+| span | Wing span | B2+B3 | m | 28 | 31.4585 | 35 |
+| c1_root_chord | Body chord | C0 | m | 39 | 41.1795 | 43 |
 | c2_c1_ratio | Transition-wing chord | C3 | m | 13 | 13.927 | 16 |
-| c3_c1_ratio | Outer-wing chord | C4 | m | 6.8 | 7.768 | 9.8 |
-| b2_span_ratio | Transition wing fraction B2 | B2/(B2+B3) | - | 0.14 | 0.142026 | 0.23 |
+| c4_c3_ratio | Transition taper ratio | C4/C3 | - | 0.45 | 0.5578 | 0.6 |
+| b2_span_ratio | Transition wing fraction B2 | B2/(B2+B3) | - | 0.13 | 0.142 | 0.21 |
 | c4_c1_ratio | Wing tip chord | C5 | m | 0.8 | 0.8 | 1.8 |
-| s2_deg | Sweep S1 | S1 | deg | 45 | 54.059 | 66 |
-| s3_deg | Sweep S2 | S2 | deg | 27 | 27.71 | 40 |
+| s2_deg | Transition-wing 50% chord sweep | S1 | deg | 15 | 34.6 | 45 |
+| s3_deg | Outer-wing 25% chord sweep | S2 | deg | 22 | 24.7 | 33 |
+| med_3_te_sweep_deg | Transition-wing trailing-edge sweep | med_3_TEswp | - | -10 | 0 | 25 |
 | twist_c1_deg | Twist at C0/C3 | twist_C0/C3 | deg | 0.2 | 1 | 2 |
 | twist_c3_deg | Twist at C4 | twist_C4 | deg | 0.1 | 0.8 | 1.5 |
 | twist_c4_deg | Twist at C5 | twist_C5 | deg | 0.1 | 0.6 | 1 |

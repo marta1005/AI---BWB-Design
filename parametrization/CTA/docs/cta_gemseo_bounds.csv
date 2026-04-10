@@ -1,11 +1,12 @@
 gemseo_variable,size,cta_parameters,units,normalization,description,lower_bounds,reference,upper_bounds
-wing_span,1,['span'],m,absolute,"CTA outer semispan, i.e. wing span = B2 + B3.",[30.0],[31.459],[35.0]
-c0_body_chord,1,['c1_root_chord'],m,absolute,CTA body chord C0.,[37.0],[41.203],[45.0]
-c3_transition_chord,1,['c2_c1_ratio'],m,absolute,CTA transition-wing chord C3.,[13.0],[13.927],[16.0]
-c4_outer_wing_chord,1,['c3_c1_ratio'],m,absolute,CTA outer-wing chord C4.,[6.8],[7.768],[9.8]
-b2_wing_fraction,1,['b2_span_ratio'],-,fraction of wing span,CTA transition-wing fraction B2/(B2+B3).,[0.14],[0.14202612924759211],[0.23]
-c5_wing_tip_chord,1,['c4_c1_ratio'],m,absolute,CTA wing-tip chord C5.,[0.8],[0.8000000000000002],[1.8]
-sweeps_deg,2,"['s2_deg', 's3_deg']",deg,angle,CTA public sweeps S1 and S2.,"[45.0, 27.0]","[54.059, 27.71]","[66.0, 40.0]"
+wing_span,1,['span'],m,absolute,"CTA outer semispan, i.e. wing span = B2 + B3.",[28.0],[31.458499999999997],[35.0]
+c0_body_chord,1,['c1_root_chord'],m,absolute,CTA body chord C0.,[39.0],[41.17952274],[43.0]
+c3_transition_chord,1,['c2_c1_ratio'],m,absolute,CTA transition-wing chord C3.,[13.0],[13.9269627],[16.0]
+transition_taper_ratio,1,['c4_c3_ratio'],-,ratio,CTA transition-wing taper ratio C4/C3 driving the C4 chord.,[0.45],[0.5578000000000001],[0.6]
+b2_wing_fraction,1,['b2_span_ratio'],-,fraction of wing span,CTA transition-wing fraction B2/(B2+B3).,[0.13],[0.1419998],[0.21]
+c5_wing_tip_chord,1,['c4_c1_ratio'],m,absolute,CTA wing-tip chord C5.,[0.8],[0.8],[1.8]
+sweeps_deg,2,"['s2_deg', 's3_deg']",deg,angle,CTA public sweeps S1 (50% chord) and S2 (25% chord).,"[15.0, 22.0]","[34.60000000000001, 24.7]","[45.0, 33.0]"
+transition_te_sweep_deg,1,['med_3_te_sweep_deg'],deg,angle,CTA transition-wing trailing-edge sweep (med_3_TEswp).,[-10.0],[0.0],[25.0]
 twist_deg,3,"['twist_c1_deg', 'twist_c3_deg', 'twist_c4_deg']",deg,angle,"Twist values at CTA sections C0/C3, C4 and C5.","[0.2, 0.1, 0.1]","[1.0, 0.8, 0.6]","[2.0, 1.5, 1.0]"
 c0_upper_cst,6,"['c1_upper_cst_0', 'c1_upper_cst_1', 'c1_upper_cst_2', 'c1_upper_cst_3', 'c1_upper_cst_4', 'c1_upper_cst_5']",-,Bernstein coefficient,Upper CST coefficients of CTA section C0.,"[0.2614813601757442, 0.07541796839093923, 0.15032412297549802, 0.0538325369718894, 0.17630141178783335, 0.13283323861908938]","[0.3214813601757442, 0.13541796839093923, 0.200324122975498, 0.1038325369718894, 0.21630141178783335, 0.16283323861908938]","[0.3814813601757442, 0.19541796839093922, 0.250324122975498, 0.15383253697188942, 0.25630141178783333, 0.19283323861908938]"
 c0_lower_cst,6,"['c1_lower_cst_0', 'c1_lower_cst_1', 'c1_lower_cst_2', 'c1_lower_cst_3', 'c1_lower_cst_4', 'c1_lower_cst_5']",-,Bernstein coefficient,Lower CST coefficients of CTA section C0.,"[0.057959709162651474, 0.1782356713547635, 0.0, 0.24850032826444446, 0.25406076166617086, 0.05245081524365487]","[0.11795970916265147, 0.2382356713547635, 0.03847969918611987, 0.29850032826444445, 0.29406076166617084, 0.08245081524365487]","[0.17795970916265147, 0.2982356713547635, 0.08847969918611986, 0.34850032826444444, 0.3340607616661708, 0.11245081524365487]"

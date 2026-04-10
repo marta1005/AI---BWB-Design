@@ -1,12 +1,13 @@
 | GEMSEO Variable | CTA Parameters | Units | Normalization | Lower Bounds | Reference | Upper Bounds | Description |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| wing_span | span | m | absolute | 30 | 31.459 | 35 | CTA outer semispan, i.e. wing span = B2 + B3. |
-| c0_body_chord | c1_root_chord | m | absolute | 37 | 41.203 | 45 | CTA body chord C0. |
+| wing_span | span | m | absolute | 28 | 31.4585 | 35 | CTA outer semispan, i.e. wing span = B2 + B3. |
+| c0_body_chord | c1_root_chord | m | absolute | 39 | 41.1795 | 43 | CTA body chord C0. |
 | c3_transition_chord | c2_c1_ratio | m | absolute | 13 | 13.927 | 16 | CTA transition-wing chord C3. |
-| c4_outer_wing_chord | c3_c1_ratio | m | absolute | 6.8 | 7.768 | 9.8 | CTA outer-wing chord C4. |
-| b2_wing_fraction | b2_span_ratio | - | fraction of wing span | 0.14 | 0.142026 | 0.23 | CTA transition-wing fraction B2/(B2+B3). |
+| transition_taper_ratio | c4_c3_ratio | - | ratio | 0.45 | 0.5578 | 0.6 | CTA transition-wing taper ratio C4/C3 driving the C4 chord. |
+| b2_wing_fraction | b2_span_ratio | - | fraction of wing span | 0.13 | 0.142 | 0.21 | CTA transition-wing fraction B2/(B2+B3). |
 | c5_wing_tip_chord | c4_c1_ratio | m | absolute | 0.8 | 0.8 | 1.8 | CTA wing-tip chord C5. |
-| sweeps_deg | s2_deg, s3_deg | deg | angle | [45, 27] | [54.059, 27.71] | [66, 40] | CTA public sweeps S1 and S2. |
+| sweeps_deg | s2_deg, s3_deg | deg | angle | [15, 22] | [34.6, 24.7] | [45, 33] | CTA public sweeps S1 (50% chord) and S2 (25% chord). |
+| transition_te_sweep_deg | med_3_te_sweep_deg | deg | angle | -10 | 0 | 25 | CTA transition-wing trailing-edge sweep (med_3_TEswp). |
 | twist_deg | twist_c1_deg, twist_c3_deg, twist_c4_deg | deg | angle | [0.2, 0.1, 0.1] | [1, 0.8, 0.6] | [2, 1.5, 1] | Twist values at CTA sections C0/C3, C4 and C5. |
 | c0_upper_cst | c1_upper_cst_0, c1_upper_cst_1, c1_upper_cst_2, c1_upper_cst_3, c1_upper_cst_4, c1_upper_cst_5 | - | Bernstein coefficient | [0.261481, 0.075418, 0.150324, 0.0538325, 0.176301, 0.132833] | [0.321481, 0.135418, 0.200324, 0.103833, 0.216301, 0.162833] | [0.381481, 0.195418, 0.250324, 0.153833, 0.256301, 0.192833] | Upper CST coefficients of CTA section C0. |
 | c0_lower_cst | c1_lower_cst_0, c1_lower_cst_1, c1_lower_cst_2, c1_lower_cst_3, c1_lower_cst_4, c1_lower_cst_5 | - | Bernstein coefficient | [0.0579597, 0.178236, 0, 0.2485, 0.254061, 0.0524508] | [0.11796, 0.238236, 0.0384797, 0.2985, 0.294061, 0.0824508] | [0.17796, 0.298236, 0.0884797, 0.3485, 0.334061, 0.112451] | Lower CST coefficients of CTA section C0. |

@@ -1,12 +1,13 @@
 parameter,display_name,symbol,units,normalization,lower_bound,reference,upper_bound,description
-span,Wing span,B2+B3,m,absolute,30.0,31.459,35.0,"Outer semispan of the CTA planform. B1 remains fixed in meters, so the total semispan is B1 + wing span and wing span = B2 + B3."
-c1_root_chord,Body chord,C0,m,absolute,37.0,41.203,45.0,CTA body chord. C1 is derived from C0 with fixed sweep S and straight TE(C0->C1).
-c2_c1_ratio,Transition-wing chord,C3,m,absolute,13.0,13.927,16.0,CTA transition-wing chord C3. This section remains anchored at y=8.041 m.
-c3_c1_ratio,Outer-wing chord,C4,m,absolute,6.8,7.768,9.8,CTA outer-wing chord C4.
-b2_span_ratio,Transition wing fraction B2,B2/(B2+B3),-,fraction of wing span,0.14,0.14202612924759211,0.23,"CTA transition-wing fraction measured against wing span. Wing span is the outer semispan excluding the fixed body segment B1, so wing span = B2 + B3."
-c4_c1_ratio,Wing tip chord,C5,m,absolute,0.8,0.8000000000000002,1.8,CTA wing-tip chord C5.
-s2_deg,Sweep S1,S1,deg,angle,45.0,54.059,66.0,CTA sweep S1 (mapped from s2_deg).
-s3_deg,Sweep S2,S2,deg,angle,27.0,27.71,40.0,CTA sweep S2 (mapped from s3_deg).
+span,Wing span,B2+B3,m,absolute,28.0,31.458499999999997,35.0,"Outer semispan of the CTA planform. B1 remains fixed in meters, so the total semispan is B1 + wing span and wing span = B2 + B3."
+c1_root_chord,Body chord,C0,m,absolute,39.0,41.17952274,43.0,CTA body chord. C1 is derived from C0 with fixed sweep S and straight TE(C0->C1).
+c2_c1_ratio,Transition-wing chord,C3,m,absolute,13.0,13.9269627,16.0,CTA transition-wing chord C3. This section remains anchored at y=8.041 m.
+c4_c3_ratio,Transition taper ratio,C4/C3,-,ratio,0.45,0.5578000000000001,0.6,CTA transition-wing taper ratio driving C4 from C3.
+b2_span_ratio,Transition wing fraction B2,B2/(B2+B3),-,fraction of wing span,0.13,0.1419998,0.21,"CTA transition-wing fraction measured against wing span. Wing span is the outer semispan excluding the fixed body segment B1, so wing span = B2 + B3."
+c4_c1_ratio,Wing tip chord,C5,m,absolute,0.8,0.8,1.8,CTA wing-tip chord C5.
+s2_deg,Transition-wing 50% chord sweep,S1,deg,angle,15.0,34.60000000000001,45.0,CTA transition-wing sweep measured on the 50% chord line.
+s3_deg,Outer-wing 25% chord sweep,S2,deg,angle,22.0,24.7,33.0,CTA outer-wing sweep measured on the 25% chord line.
+med_3_te_sweep_deg,Transition-wing trailing-edge sweep,med_3_TEswp,-,-,-10.0,0.0,25.0,CTA transition-wing trailing-edge sweep shaping the TE between C3 and C4.
 twist_c1_deg,Twist at C0/C3,twist_C0/C3,deg,angle,0.2,1.0,2.0,Geometric twist at CTA section C0/C3.
 twist_c3_deg,Twist at C4,twist_C4,deg,angle,0.1,0.8,1.5,Geometric twist at CTA section C4.
 twist_c4_deg,Twist at C5,twist_C5,deg,angle,0.1,0.6,1.0,Geometric twist at CTA section C5.

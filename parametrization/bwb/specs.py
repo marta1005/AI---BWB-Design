@@ -77,6 +77,8 @@ class PlanformSpec:
     s1_deg: float = 55.0
     s2_deg: float = 50.0
     s3_deg: float = 32.0
+    med_3_te_sweep_deg: float = 0.0
+    med_3_te_helper_fraction: float = 0.72
     te_c1_span_fraction: float = 5.0 / 8.0
     te_inboard_blend_fraction: float = 0.96
     te_inboard_blend_dx: float = 0.0
@@ -176,6 +178,15 @@ class PlanformSpec:
         for label, value in (("s1_deg", self.s1_deg), ("s2_deg", self.s2_deg), ("s3_deg", self.s3_deg)):
             if not (0.0 < value < 85.0):
                 raise ValueError(f"{label} must lie in (0, 85), got {value}")
+        if not (-85.0 < self.med_3_te_sweep_deg < 85.0):
+            raise ValueError(
+                f"med_3_te_sweep_deg must lie in (-85, 85), got {self.med_3_te_sweep_deg}"
+            )
+        if not (0.0 < self.med_3_te_helper_fraction < 1.0):
+            raise ValueError(
+                "med_3_te_helper_fraction must lie in (0, 1), "
+                f"got {self.med_3_te_helper_fraction}"
+            )
 
     def section_chords(self) -> np.ndarray:
         return np.asarray(
@@ -251,8 +262,14 @@ class PlanformSpec:
             [te_c1, y_c1, 0.0],
             [te_inboard_blend, y_inboard_blend, 0.0],
             [te_c3, float(y_sections[1]), 0.0],
-            [te_c4, float(y_sections[2]), 0.0],
         ]
+
+        if abs(float(self.med_3_te_sweep_deg)) > 1e-12:
+            y_med3 = y_c3 + float(self.med_3_te_helper_fraction) * (y_c4 - y_c3)
+            te_med3 = te_c3 + np.tan(np.deg2rad(float(self.med_3_te_sweep_deg))) * (y_med3 - y_c3)
+            points.append([te_med3, y_med3, 0.0])
+
+        points.append([te_c4, float(y_sections[2]), 0.0])
 
         if self.te_outer_blend_fraction > 1e-12:
             # Optional short outer-wing helper point for a smooth C4->C5 TE.

@@ -10,8 +10,10 @@ from parametrization.bwb.design_space import DesignSpace, flatten_design, parame
 from parametrization.bwb.design_variables import SectionedBWBDesignVariables
 
 from .reference import (
+    CTA_REFERENCE_C3_TRANSITION_CHORD_M,
     SWEEP_NAME_TO_VARIABLE,
     VARIABLE_TO_SWEEP_NAME,
+    _chord_sweep_from_leading_edge_sweep,
     apply_cta_fixed_parameters,
     build_reference_design,
     cta_fixed_values,
@@ -34,11 +36,12 @@ CTA_ACTIVE_VARIABLES: Tuple[str, ...] = (
     "span",
     "c1_root_chord",
     "c2_c1_ratio",
-    "c3_c1_ratio",
+    "c4_c3_ratio",
     "b2_span_ratio",
     "c4_c1_ratio",
     "s2_deg",  # CTA label S1
     "s3_deg",  # CTA label S2
+    "med_3_te_sweep_deg",
     "twist_c1_deg",
     "twist_c3_deg",
     "twist_c4_deg",
@@ -49,14 +52,15 @@ CTA_ACTIVE_VARIABLES: Tuple[str, ...] = (
 )
 
 CTA_PUBLIC_ACTIVE_BOUNDS: Dict[str, Tuple[float, float]] = {
-    "span": (30.0, 35.0),  # wing span = B2 + B3
-    "c1_root_chord": (37.0, 45.0),  # C0
+    "span": (28.0, 35.0),  # wing span = B2 + B3
+    "c1_root_chord": (39.0, 43.0),  # C0
     "c2_c1_ratio": (13.0, 16.0),  # C3 in absolute meters at the CTA layer
-    "c3_c1_ratio": (6.8, 9.8),  # C4 in absolute meters at the CTA layer
-    "b2_span_ratio": (0.14, 0.23),  # B2 / (B2 + B3)
+    "c4_c3_ratio": (0.45, 0.60),  # C4/C3 transition taper ratio
+    "b2_span_ratio": (0.13, 0.21),  # B2 / (B2 + B3)
     "c4_c1_ratio": (0.80, 1.80),  # C5 in absolute meters at the CTA layer
-    "s2_deg": (45.0, 66.0),  # S1
-    "s3_deg": (27.0, 40.0),  # S2
+    "s2_deg": (15.0, 45.0),  # S1
+    "s3_deg": (22.0, 33.0),  # S2
+    "med_3_te_sweep_deg": (-10.0, 25.0),  # med_3_TEswp
     "twist_c1_deg": (0.2, 2.0),
     "twist_c3_deg": (0.1, 1.5),
     "twist_c4_deg": (0.1, 1.0),
@@ -119,6 +123,17 @@ def _internal_c4_ratio(c0_body_chord: float, c4_absolute_chord: float) -> float:
     return float(float(c4_absolute_chord) / float(c0_body_chord))
 
 
+def _transition_taper_ratio(c3_transition_chord: float, c4_outer_chord: float) -> float:
+    c3 = float(c3_transition_chord)
+    if c3 <= 0.0:
+        raise ValueError(f"C3/transition chord must be positive, got {c3:.6f}")
+    return float(float(c4_outer_chord) / c3)
+
+
+def _c4_from_transition_taper(c3_transition_chord: float, taper_ratio: float) -> float:
+    return float(float(c3_transition_chord) * float(taper_ratio))
+
+
 def _absolute_chord(c0_body_chord: float, chord_ratio_to_c0: float) -> float:
     return float(float(c0_body_chord) * float(chord_ratio_to_c0))
 
@@ -127,6 +142,45 @@ def _internal_chord_ratio(c0_body_chord: float, absolute_chord: float) -> float:
     if c0_body_chord <= 0.0:
         raise ValueError(f"C0/body chord must be positive, got {c0_body_chord:.6f}")
     return float(float(absolute_chord) / float(c0_body_chord))
+
+
+def _cta_public_flat_from_design(
+    design: SectionedBWBDesignVariables,
+    reference_design: Optional[SectionedBWBDesignVariables] = None,
+) -> Dict[str, float]:
+    flat = flatten_design(design)
+    b1_fixed_m = float(cta_fixed_values(reference_design=reference_design or design)["b1_fixed_m"])
+    total_span = float(flat["span"])
+    internal_b2_ratio = float(flat["b2_span_ratio"])
+    internal_b3_ratio = float(flat["b3_span_ratio"])
+    c0_body_chord = float(flat["c1_root_chord"])
+    c3_transition_chord = _absolute_chord(c0_body_chord, float(flat["c2_c1_ratio"]))
+    c4_outer_chord = _c4_absolute_chord(c0_body_chord, float(flat["c3_c1_ratio"]))
+    c5_wing_tip = _c5_absolute_chord(c0_body_chord, float(flat["c4_c1_ratio"]))
+    b2_length_m = float(total_span * internal_b2_ratio)
+    b3_length_m = float(total_span * internal_b3_ratio)
+
+    flat["span"] = _wing_span_m(total_span, b1_fixed_m)
+    flat["b2_span_ratio"] = _b2_wing_span_ratio(total_span, internal_b2_ratio, b1_fixed_m)
+    flat["c4_c1_ratio"] = c5_wing_tip
+    flat["c2_c1_ratio"] = c3_transition_chord
+    flat["c3_c1_ratio"] = c4_outer_chord
+    flat["c4_c3_ratio"] = _transition_taper_ratio(c3_transition_chord, c4_outer_chord)
+    flat["s2_deg"] = _chord_sweep_from_leading_edge_sweep(
+        le_sweep_deg=float(flat["s2_deg"]),
+        chord_fraction=0.50,
+        dy_m=b2_length_m,
+        chord_in_m=c3_transition_chord,
+        chord_out_m=c4_outer_chord,
+    )
+    flat["s3_deg"] = _chord_sweep_from_leading_edge_sweep(
+        le_sweep_deg=float(flat["s3_deg"]),
+        chord_fraction=0.25,
+        dy_m=b3_length_m,
+        chord_in_m=c4_outer_chord,
+        chord_out_m=c5_wing_tip,
+    )
+    return flat
 
 
 def _cta_reference_cst_bounds(reference_flat: Dict[str, float]) -> Dict[str, Tuple[float, float]]:
@@ -178,28 +232,7 @@ def _cta_public_bounds(reference_design: SectionedBWBDesignVariables) -> Dict[st
         _c4_absolute_chord(c0_lower, c4_ratio_lower),
         _c4_absolute_chord(c0_upper, c4_ratio_upper),
     )
-    reference_flat = flatten_design(reference_design)
-    reference_flat["span"] = _wing_span_m(
-        float(reference_flat["span"]),
-        b1_fixed_m,
-    )
-    reference_flat["b2_span_ratio"] = _b2_wing_span_ratio(
-        float(flatten_design(reference_design)["span"]),
-        float(reference_flat["b2_span_ratio"]),
-        b1_fixed_m,
-    )
-    reference_flat["c4_c1_ratio"] = _c5_absolute_chord(
-        float(reference_flat["c1_root_chord"]),
-        float(reference_flat["c4_c1_ratio"]),
-    )
-    reference_flat["c2_c1_ratio"] = _absolute_chord(
-        float(reference_flat["c1_root_chord"]),
-        float(reference_flat["c2_c1_ratio"]),
-    )
-    reference_flat["c3_c1_ratio"] = _c4_absolute_chord(
-        float(reference_flat["c1_root_chord"]),
-        float(reference_flat["c3_c1_ratio"]),
-    )
+    reference_flat = _cta_public_flat_from_design(reference_design, reference_design=reference_design)
     bounds.update(CTA_PUBLIC_ACTIVE_BOUNDS)
     bounds.update(_cta_reference_cst_bounds(reference_flat))
     for name in CTA_ACTIVE_VARIABLES:
@@ -217,28 +250,7 @@ def _rename_section_tokens(text: str) -> str:
 @dataclass
 class CTADesignSpace(DesignSpace):
     def reference_flat(self) -> Dict[str, float]:
-        flat = flatten_design(self.reference_design)
-        b1_fixed_m = float(cta_fixed_values(reference_design=self.reference_design)["b1_fixed_m"])
-        total_span = float(flat["span"])
-        flat["span"] = _wing_span_m(total_span, b1_fixed_m)
-        flat["b2_span_ratio"] = _b2_wing_span_ratio(
-            total_span,
-            float(flat["b2_span_ratio"]),
-            b1_fixed_m,
-        )
-        flat["c4_c1_ratio"] = _c5_absolute_chord(
-            float(flat["c1_root_chord"]),
-            float(flat["c4_c1_ratio"]),
-        )
-        flat["c2_c1_ratio"] = _absolute_chord(
-            float(flat["c1_root_chord"]),
-            float(flat["c2_c1_ratio"]),
-        )
-        flat["c3_c1_ratio"] = _c4_absolute_chord(
-            float(flat["c1_root_chord"]),
-            float(flat["c3_c1_ratio"]),
-        )
-        return flat
+        return _cta_public_flat_from_design(self.reference_design, reference_design=self.reference_design)
 
     def to_design(
         self,
@@ -267,9 +279,11 @@ class CTADesignSpace(DesignSpace):
                 c0_here = float(vector[index_map["c1_root_chord"]])
                 vector[index_map["c2_c1_ratio"]] = _internal_chord_ratio(c0_here, value)
                 continue
-            if name == "c3_c1_ratio":
+            if name == "c4_c3_ratio":
                 c0_here = float(vector[index_map["c1_root_chord"]])
-                vector[index_map["c3_c1_ratio"]] = _internal_c4_ratio(c0_here, value)
+                c3_here = _absolute_chord(c0_here, float(vector[index_map["c2_c1_ratio"]]))
+                c4_here = _c4_from_transition_taper(c3_here, value)
+                vector[index_map["c3_c1_ratio"]] = _internal_c4_ratio(c0_here, c4_here)
                 continue
             if name == "c4_c1_ratio":
                 c0_here = float(vector[index_map["c1_root_chord"]])
@@ -326,11 +340,13 @@ class CTADesignSpace(DesignSpace):
                         c0_here = float(vector[index_map["c1_root_chord"]])
                         vector[index_map["c2_c1_ratio"]] = _internal_chord_ratio(c0_here, sampled_c3)
                         continue
-                    if name == "c3_c1_ratio":
-                        c4_lower, c4_upper = self._local_bounds(name, reference_flat[name], variation_scale)
-                        sampled_c4 = rng.uniform(c4_lower, c4_upper)
+                    if name == "c4_c3_ratio":
+                        taper_lower, taper_upper = self._local_bounds(name, reference_flat[name], variation_scale)
+                        sampled_taper = rng.uniform(taper_lower, taper_upper)
                         c0_here = float(vector[index_map["c1_root_chord"]])
-                        vector[index_map["c3_c1_ratio"]] = _internal_c4_ratio(c0_here, sampled_c4)
+                        c3_here = _absolute_chord(c0_here, float(vector[index_map["c2_c1_ratio"]]))
+                        c4_here = _c4_from_transition_taper(c3_here, sampled_taper)
+                        vector[index_map["c3_c1_ratio"]] = _internal_c4_ratio(c0_here, c4_here)
                         continue
                     if name == "c4_c1_ratio":
                         c5_lower, c5_upper = self._local_bounds(name, reference_flat[name], variation_scale)
@@ -353,7 +369,8 @@ class CTADesignSpace(DesignSpace):
             else:
                 raise ValueError(
                     "Could not sample a feasible CTA design within the requested public bounds. "
-                    "Check the C0/C3/C4/C5 and wing-span combinations because all active chords must remain positive."
+                    "Check the C0/C3/C4/C5, transition taper ratio, and wing-span combinations "
+                    "because all active chords must remain positive."
                 ) from last_error
         return sampled
 
@@ -365,7 +382,8 @@ def build_cta_design_space(
     Build CTA AI design space with requested fixed/variable split:
     - fixed: B1 and S
     - derived: C1 and B3
-    - variable: wing span, B2 fraction, C0, C3, C4, C5, following sweeps, twists, and CST.
+    - variable: wing span, B2 fraction, C0, C3, transition taper ratio C4/C3, C5,
+      public chord sweeps S1/S2, twists, and CST.
     """
     reference = build_reference_design() if reference_design is None else reference_design
     reference = apply_cta_fixed_parameters(reference, reference_design=reference)
@@ -385,20 +403,22 @@ def cta_fixed_parameters(
     """Fixed CTA values plus naming aliases for presentation."""
     reference = build_reference_design() if reference_design is None else reference_design
     fixed = cta_fixed_values(reference_design=reference)
+    public_reference = _cta_public_flat_from_design(reference, reference_design=reference)
     fixed.update(
         {
             "sweep_naming": dict(SWEEP_NAME_TO_VARIABLE),
             "legacy_reference": {
                 "S(legacy S1)": fixed["s_deg"],
-                "S1(legacy S2)": float(reference.s2_deg),
-                "S2(legacy S3)": float(reference.s3_deg),
+                "S1(50%-chord)": public_reference["s2_deg"],
+                "S2(25%-chord)": public_reference["s3_deg"],
             },
             "notes": (
                 "CTA keeps B1 fixed in absolute meters while wing span can vary. "
                 "B2 is defined as a fraction of wing span, with wing span = B2 + B3. "
-                "C0/body chord, C3/transition-wing chord, C4/outer-wing chord, and C5/wing tip chord remain active. "
+                "C0/body chord, C3/transition-wing chord, transition taper ratio C4/C3, and C5/wing tip chord remain active. "
                 "C1 is derived from fixed sweep S and straight TE(C0->C1). "
                 "There is no public C2 parameter; the inboard TE blend from C1 to C3 uses a hidden helper point. "
+                "Transition-wing sweep S1 is defined on the 50% chord line and outer-wing sweep S2 on the 25% chord line. "
                 "TE(C3->C4) is no longer forced to stay straight. "
                 "Twist stays constant from root to C3."
             ),
@@ -406,10 +426,11 @@ def cta_fixed_parameters(
                 "C0": "Body chord",
                 "C1": "Derived from C0 with fixed S and straight TE(C0->C1)",
                 "C3": "Active transition-wing chord",
-                "C4": "Active outer-wing chord",
+                "C4": "Derived from transition taper ratio C4/C3",
                 "C5": "Wing tip (active)",
                 "B2": "Transition wing fraction of wing span",
                 "wing_span": "B2 + B3",
+                "med_3_TEswp": "Transition-wing trailing-edge sweep shaping TE(C3->C4)",
             },
         }
     )
@@ -451,12 +472,12 @@ def cta_parameter_metadata(
             info["description"] = (
                 "CTA transition-wing chord C3. This section remains anchored at y=8.041 m."
             )
-        if name == "c3_c1_ratio":
-            info["display_name"] = "Outer-wing chord"
-            info["symbol"] = "C4"
-            info["units"] = "m"
-            info["normalization"] = "absolute"
-            info["description"] = "CTA outer-wing chord C4."
+        if name == "c4_c3_ratio":
+            info["display_name"] = "Transition taper ratio"
+            info["symbol"] = "C4/C3"
+            info["units"] = "-"
+            info["normalization"] = "ratio"
+            info["description"] = "CTA transition-wing taper ratio driving C4 from C3."
         if name == "b2_span_ratio":
             info["display_name"] = "Transition wing fraction B2"
             info["symbol"] = "B2/(B2+B3)"
@@ -472,6 +493,20 @@ def cta_parameter_metadata(
             info["units"] = "m"
             info["normalization"] = "absolute"
             info["description"] = "CTA wing-tip chord C5."
+        if name == "s2_deg":
+            info["display_name"] = "Transition-wing 50% chord sweep"
+            info["symbol"] = "S1"
+            info["description"] = "CTA transition-wing sweep measured on the 50% chord line."
+        if name == "s3_deg":
+            info["display_name"] = "Outer-wing 25% chord sweep"
+            info["symbol"] = "S2"
+            info["description"] = "CTA outer-wing sweep measured on the 25% chord line."
+        if name == "med_3_te_sweep_deg":
+            info["display_name"] = "Transition-wing trailing-edge sweep"
+            info["symbol"] = "med_3_TEswp"
+            info["description"] = (
+                "CTA transition-wing trailing-edge sweep shaping the TE between C3 and C4."
+            )
         if name in _TWIST_PUBLIC_LABELS:
             public_label = _TWIST_PUBLIC_LABELS[name]
             info["display_name"] = f"Twist at {public_label}"

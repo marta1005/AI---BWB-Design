@@ -41,7 +41,7 @@ def write_markdown(path: Path, rows, summary):
         f"- `B1` (`b1_fixed_m`): `{fixed['b1_fixed_m']}` m",
         "- `C1` conditioned by fixed `S` and straight `TE(C0->C1)`",
         "- no public `C2`: the inboard `TE(C1->C3)` blend is built with a hidden helper point",
-        "- `C3` and `C4` are active chord variables",
+        "- `C3` is an active chord variable and `C4` is driven by the transition taper ratio `C4/C3`",
         "- `TE(C3->C4)` is smooth and not constrained to remain straight",
         "- `twist` is constant from Section 0 through Section 3",
         f"- `te_exact_segments`: `{fixed['te_exact_segments']}`",

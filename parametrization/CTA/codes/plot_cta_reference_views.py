@@ -25,6 +25,7 @@ from parametrization.CTA.reference import (
     cta_fixed_values,
     to_cta_model_config,
 )
+from parametrization.CTA.design_space import build_cta_design_space
 from parametrization.bwb.builder import prepare_geometry
 
 
@@ -507,6 +508,7 @@ def annotate_layout_measurements(
     c_te_x: np.ndarray,
     c_chords: np.ndarray,
     config,
+    public_reference: dict,
 ) -> None:
     text_style = {
         "fontsize": 10.2,
@@ -519,6 +521,8 @@ def annotate_layout_measurements(
     def outlined_text(x_pos: float, y_pos: float, label: str, rotation: float = 0.0) -> None:
         txt = ax.text(x_pos, y_pos, label, rotation=rotation, **text_style)
         txt.set_path_effects([pe.withStroke(linewidth=2.0, foreground="white", alpha=0.95)])
+
+    taper_ratio = float(public_reference["c4_c3_ratio"])
 
     # Chord measurements centered on each chord line.
     for name, yy, le_x, te_x, chord in zip(c_names, c_y, c_le_x, c_te_x, c_chords):
@@ -533,7 +537,10 @@ def annotate_layout_measurements(
             zorder=5,
         )
         mid_x = float(0.5 * (le_x + te_x))
-        outlined_text(mid_x, y_here + 0.34, f"{name}={chord:.2f} m")
+        if name == "C4":
+            outlined_text(mid_x, y_here + 0.46, f"C4/C3={taper_ratio:.3f}\nC4={chord:.2f} m")
+        else:
+            outlined_text(mid_x, y_here + 0.34, f"{name}={chord:.2f} m")
 
     # Span segment measurements outside the wing, just beyond TE.
     wing_span = float(y_sections[3] - y_sections[1])
@@ -566,19 +573,29 @@ def annotate_layout_measurements(
             "S",
             float(y_sections[0]),
             float(le_helper_points[0, 1]),
+            float(planform.le_x(float(y_sections[0]))),
+            float(planform.le_x(float(le_helper_points[0, 1]))),
             66.87,
-        )
-    ]
-    sweep_segments.extend(
+        ),
         (
-            ("S1", float(y_sections[1]), float(y_sections[2]), float(config.planform.s2_deg)),
-            ("S2", float(y_sections[2]), float(y_sections[3]), float(config.planform.s3_deg)),
-        )
-    )
+            "S1 (50%)",
+            float(c_y[2]),
+            float(c_y[3]),
+            float(c_le_x[2] + 0.50 * c_chords[2]),
+            float(c_le_x[3] + 0.50 * c_chords[3]),
+            float(public_reference["s2_deg"]),
+        ),
+        (
+            "S2 (25%)",
+            float(c_y[3]),
+            float(c_y[4]),
+            float(c_le_x[3] + 0.25 * c_chords[3]),
+            float(c_le_x[4] + 0.25 * c_chords[4]),
+            float(public_reference["s3_deg"]),
+        ),
+    ]
     sweep_color = "#1d4ed8"
-    for idx, (label, y0, y1, angle_deg) in enumerate(sweep_segments):
-        x0 = float(planform.le_x(y0))
-        x1 = float(planform.le_x(y1))
+    for idx, (label, y0, y1, x0, x1, angle_deg) in enumerate(sweep_segments):
         dy = float(y1 - y0)
         dx = float(x1 - x0)
         seg_len = max(np.hypot(dx, dy), 1e-9)
@@ -623,7 +640,7 @@ def annotate_layout_measurements(
             tx + 0.15 + 0.10 * idx,
             ty + 0.10,
             f"{label}={angle_deg:.1f}°",
-            fontsize=11.8,
+            fontsize=10.9,
             color=sweep_color,
             ha="center",
             va="center",
@@ -641,6 +658,7 @@ def annotate_public_nomenclature_scheme(
     c_chords: np.ndarray,
     config,
     fixed_values: dict,
+    public_reference: dict,
 ) -> None:
     text_style = {
         "fontsize": 10.2,
@@ -688,7 +706,7 @@ def annotate_public_nomenclature_scheme(
     # LE->TE chord arrow to avoid piling labels up on the trailing edge.
     public_chord_labels = {
         0: ("Body chord", float(fixed_values["c0_body_chord_m"]), 1.18),
-        3: ("Wing chord", float(fixed_values["c4_wing_chord_m"]), 1.18),
+        3: ("Transition taper ratio", float(public_reference["c4_c3_ratio"]), 1.18),
         4: ("Wing tip", float(fixed_values["c5_wing_tip_m"]), 1.05),
     }
     for idx, name in enumerate(("C0", "C1", "C3", "C4", "C5")):
@@ -707,8 +725,15 @@ def annotate_public_nomenclature_scheme(
         label_y = y_here - (0.72 if idx == 0 else 0.58)
         outlined_text(mid_x, label_y, name)
         if idx in public_chord_labels:
-            label, chord_value, y_offset = public_chord_labels[idx]
-            outlined_text(mid_x, y_here + y_offset, f"{label}\n{chord_value:.3f} m")
+            label, label_value, y_offset = public_chord_labels[idx]
+            if idx == 3:
+                outlined_text(
+                    mid_x,
+                    y_here + y_offset,
+                    f"{label}\nC4/C3 = {label_value:.3f}\nC4 = {float(fixed_values['c4_wing_chord_m']):.3f} m",
+                )
+            else:
+                outlined_text(mid_x, y_here + y_offset, f"{label}\n{label_value:.3f} m")
 
     wing_span = float(y_sections[3] - y_sections[1])
     b2_length = float(y_sections[2] - y_sections[1])
@@ -739,13 +764,25 @@ def annotate_public_nomenclature_scheme(
     add_section_guides(x_guide_end)
 
     sweep_segments = (
-        ("S1", float(y_sections[1]), float(y_sections[2]), float(config.planform.s2_deg)),
-        ("S2", float(y_sections[2]), float(y_sections[3]), float(config.planform.s3_deg)),
+        (
+            "S1 (50%)",
+            float(c_y[2]),
+            float(c_y[3]),
+            float(c_le_x[2] + 0.50 * c_chords[2]),
+            float(c_le_x[3] + 0.50 * c_chords[3]),
+            float(public_reference["s2_deg"]),
+        ),
+        (
+            "S2 (25%)",
+            float(c_y[3]),
+            float(c_y[4]),
+            float(c_le_x[3] + 0.25 * c_chords[3]),
+            float(c_le_x[4] + 0.25 * c_chords[4]),
+            float(public_reference["s3_deg"]),
+        ),
     )
     sweep_color = "#1d4ed8"
-    for idx, (label, y0, y1, angle_deg) in enumerate(sweep_segments):
-        x0 = float(planform.le_x(y0))
-        x1 = float(planform.le_x(y1))
+    for idx, (label, y0, y1, x0, x1, angle_deg) in enumerate(sweep_segments):
         dy = float(y1 - y0)
         dx = float(x1 - x0)
         seg_len = max(np.hypot(dx, dy), 1e-9)
@@ -795,6 +832,7 @@ def annotate_helper_geometry_scheme(
     c_chords: np.ndarray,
     config,
     fixed_values: dict,
+    public_reference: dict,
 ) -> None:
     annotate_public_nomenclature_scheme(
         ax,
@@ -806,6 +844,7 @@ def annotate_helper_geometry_scheme(
         c_chords,
         config,
         fixed_values,
+        public_reference,
     )
 
     helper_color = "#0891b2"
@@ -1318,6 +1357,7 @@ def draw_definition_panel(ax, config, c_names: tuple[str, ...], c_chords: np.nda
 def main() -> None:
     design = build_reference_design()
     fixed_values = cta_fixed_values(reference_design=design)
+    public_reference = build_cta_design_space(reference_design=design).reference_flat()
     config = to_cta_model_config(design, use_reference_anchor_twist=True)
     prepared = prepare_geometry(config)
     planform = prepared.planform
@@ -1401,6 +1441,7 @@ def main() -> None:
         c_te_x,
         c_chords,
         config,
+        public_reference,
     )
     ax_l_plan.set_title("CTA reference planform (top view, half-wing)")
     ax_l_plan.legend(loc="upper left", ncol=1, fontsize=10)
@@ -1479,6 +1520,7 @@ def main() -> None:
         c_chords,
         config,
         fixed_values,
+        public_reference,
     )
     ax_scheme_plan.set_title("CTA final geometric definition scheme")
     save_figure(fig_scheme, scheme_png, dpi=230, bbox_inches="tight")
@@ -1509,6 +1551,7 @@ def main() -> None:
         c_chords,
         config,
         fixed_values,
+        public_reference,
     )
     ax_helper.set_title("CTA helper geometry definition scheme")
     save_figure(fig_helper, helper_scheme_png, dpi=230, bbox_inches="tight")

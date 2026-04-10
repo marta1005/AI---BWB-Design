@@ -14,9 +14,9 @@ from parametrization.bwb.specs import (
 )
 
 # Requested sweep renaming for the CTA package:
-# - legacy S1 -> S (fixed)
-# - legacy S2 -> S1 (variable)
-# - legacy S3 -> S2 (variable)
+# - legacy S1 -> S (fixed leading-edge sweep of the inboard body segment)
+# - legacy S2 -> S1 (public 50%-chord sweep of the transition wing)
+# - legacy S3 -> S2 (public 25%-chord sweep of the outer wing)
 SWEEP_NAME_TO_VARIABLE: Dict[str, str] = {
     "S": "s1_deg",
     "S1": "s2_deg",
@@ -31,14 +31,14 @@ VARIABLE_TO_SWEEP_NAME: Dict[str, str] = {value: key for key, value in SWEEP_NAM
 # - C4 -> C5 straight exact segment
 FIXED_TE_EXACT_SEGMENTS: Tuple[int, ...] = (0, 4)
 
-CTA_REFERENCE_SPAN_M = 39.5
+CTA_REFERENCE_SPAN_M = 39.4995
 CTA_REFERENCE_B1_M = 8.041
-CTA_REFERENCE_B2_M = 4.468
-CTA_REFERENCE_B3_M = 26.991
+CTA_REFERENCE_B2_M = 4.4671007083
+CTA_REFERENCE_B3_M = 26.9913992917
 
-CTA_REFERENCE_C0_BODY_CHORD_M = 41.203
-CTA_REFERENCE_C3_TRANSITION_CHORD_M = 13.927
-CTA_REFERENCE_C4_WING_CHORD_M = 7.768
+CTA_REFERENCE_C0_BODY_CHORD_M = 41.17952274
+CTA_REFERENCE_C3_TRANSITION_CHORD_M = 13.9269627
+CTA_REFERENCE_C4_WING_CHORD_M = 7.76845979406
 CTA_REFERENCE_C5_WING_TIP_M = 0.8
 CTA_REFERENCE_NOSE_HELPER_1_Y_M = 1.90
 CTA_REFERENCE_NOSE_HELPER_1_X_M = 1.905
@@ -50,10 +50,12 @@ CTA_REFERENCE_TE_INBOARD_RADIUS_FACTOR = 1.5
 
 CTA_REFERENCE_S_DEG = 66.87
 CTA_REFERENCE_C1_SWEEP_DEG = 64.85
-CTA_REFERENCE_S1_DEG = 54.059
-CTA_REFERENCE_S2_DEG = 27.71
+CTA_REFERENCE_S1_DEG = 34.6
+CTA_REFERENCE_S2_DEG = 24.7
+CTA_REFERENCE_MED_3_TESWP_DEG = 0.0
+CTA_REFERENCE_MED_3_TE_HELPER_FRACTION = 0.78
 
-CTA_REFERENCE_PROFILE_GENERATION_MODE = "enforce_targets"
+CTA_REFERENCE_PROFILE_GENERATION_MODE = "cst_only"
 
 # CTA reference airfoils fitted from the glider geometry for the stations that
 # physically exist in the reference half-wing. The two extra outer-wing glider
@@ -231,6 +233,38 @@ CTA_REFERENCE_PROFILE_ANCHOR_TWIST_DEG: Tuple[float, ...] = (
 )
 
 
+def _leading_edge_sweep_from_chord_sweep(
+    chord_sweep_deg: float,
+    chord_fraction: float,
+    dy_m: float,
+    chord_in_m: float,
+    chord_out_m: float,
+) -> float:
+    dy = float(dy_m)
+    if dy <= 0.0:
+        raise ValueError(f"Spanwise segment length must be positive, got {dy:.6f} m")
+    tan_le = tan(radians(float(chord_sweep_deg))) - float(chord_fraction) * (
+        float(chord_out_m) - float(chord_in_m)
+    ) / dy
+    return float(degrees(atan2(tan_le * dy, dy)))
+
+
+def _chord_sweep_from_leading_edge_sweep(
+    le_sweep_deg: float,
+    chord_fraction: float,
+    dy_m: float,
+    chord_in_m: float,
+    chord_out_m: float,
+) -> float:
+    dy = float(dy_m)
+    if dy <= 0.0:
+        raise ValueError(f"Spanwise segment length must be positive, got {dy:.6f} m")
+    tan_chord = tan(radians(float(le_sweep_deg))) + float(chord_fraction) * (
+        float(chord_out_m) - float(chord_in_m)
+    ) / dy
+    return float(degrees(atan2(tan_chord * dy, dy)))
+
+
 def _cta_reference_c3_transition_chord_m() -> float:
     """Return the public CTA C3 chord from the fixed Airbus-like reference."""
     return float(CTA_REFERENCE_C3_TRANSITION_CHORD_M)
@@ -341,6 +375,7 @@ def build_reference_design() -> SectionedBWBDesignVariables:
         s1_deg=_cta_reference_internal_secant_s_deg(),
         s2_deg=CTA_REFERENCE_S1_DEG,
         s3_deg=CTA_REFERENCE_S2_DEG,
+        med_3_te_sweep_deg=CTA_REFERENCE_MED_3_TESWP_DEG,
     )
 
 
@@ -425,17 +460,34 @@ def apply_cta_fixed_parameters(
         fixed_b1_length=float(fixed["b1_fixed_m"]),
     )
     current_b2_m = float(design.span * b2_span_ratio)
+    current_b3_m = float(design.span * b3_span_ratio)
     current_c4_wing_chord_m = float(design.c3_c1_ratio * current_c0_body_chord_m)
     if current_c4_wing_chord_m <= 0.0:
         raise ValueError(
             f"CTA C4/outer-wing chord must stay positive, got {current_c4_wing_chord_m:.6f} m"
         )
+    internal_s1_deg = _leading_edge_sweep_from_chord_sweep(
+        chord_sweep_deg=float(design.s2_deg),
+        chord_fraction=0.50,
+        dy_m=current_b2_m,
+        chord_in_m=current_c3_transition_chord_m,
+        chord_out_m=current_c4_wing_chord_m,
+    )
+    internal_s2_deg = _leading_edge_sweep_from_chord_sweep(
+        chord_sweep_deg=float(design.s3_deg),
+        chord_fraction=0.25,
+        dy_m=current_b3_m,
+        chord_in_m=current_c4_wing_chord_m,
+        chord_out_m=current_c5_wing_tip_m,
+    )
     return replace(
         design,
         b1_span_ratio=b1_span_ratio,
         b2_span_ratio=b2_span_ratio,
         b3_span_ratio=b3_span_ratio,
         s1_deg=float(fixed["s_internal_deg"]),
+        s2_deg=internal_s1_deg,
+        s3_deg=internal_s2_deg,
         c2_c1_ratio=float(current_c3_transition_chord_m / current_c0_body_chord_m),
         c3_c1_ratio=float(current_c4_wing_chord_m / current_c0_body_chord_m),
         c4_c1_ratio=float(current_c5_wing_tip_m / current_c0_body_chord_m),
@@ -458,17 +510,21 @@ def to_cta_model_config(
     config.topology.anchor_y = CTA_REFERENCE_PROFILE_ANCHOR_Y
     config.sections = replace(
         config.sections,
-        shared_leading_edge=False,
+        shared_leading_edge=True,
         section_specs_override=_cta_reference_anchor_section_specs(),
         profile_relations=tuple(
             SectionProfileRelationSpec() for _ in range(len(CTA_REFERENCE_PROFILE_ANCHOR_Y))
         ),
     )
     config.planform.te_exact_segments = FIXED_TE_EXACT_SEGMENTS
+    if abs(float(fixed_design.med_3_te_sweep_deg)) > 1e-12:
+        config.planform.te_exact_segments = (0, 5)
     config.planform.te_c1_span_fraction = CTA_REFERENCE_C1_Y_M / CTA_REFERENCE_B1_M
     config.planform.te_inboard_blend_fraction = CTA_REFERENCE_TE_INBOARD_BLEND_Y_M / CTA_REFERENCE_B1_M
     config.planform.te_inboard_blend_dx = CTA_REFERENCE_TE_INBOARD_BLEND_DX_M
     config.planform.te_inboard_radius_factor = CTA_REFERENCE_TE_INBOARD_RADIUS_FACTOR
+    config.planform.med_3_te_sweep_deg = float(fixed_design.med_3_te_sweep_deg)
+    config.planform.med_3_te_helper_fraction = CTA_REFERENCE_MED_3_TE_HELPER_FRACTION
     config.planform.te_outer_blend_fraction = 0.0
     # Keep the public CTA geometry but make the C1->C3 TE transition read as
     # a genuine spline instead of a mostly linear break between hidden helpers.

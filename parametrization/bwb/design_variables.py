@@ -209,6 +209,7 @@ class SectionedBWBDesignVariables:
     s1_deg: float = 55.864059922087726
     s2_deg: float = 57.17145820858747
     s3_deg: float = 30.0
+    med_3_te_sweep_deg: float = 0.0
     nose_blend_y: float = 2.50
 
     cst_n1: float = 0.50
@@ -316,6 +317,7 @@ class SectionedBWBDesignVariables:
             "s1_deg": (50.0, 60.0),
             "s2_deg": (52.0, 62.0),
             "s3_deg": (28.0, 34.0),
+            "med_3_te_sweep_deg": (-10.0, 25.0),
             "nose_blend_y": (1.5, 4.0),
             "cst_n1": (0.45, 0.55),
             "cst_n2": (0.95, 1.10),
@@ -439,6 +441,10 @@ class SectionedBWBDesignVariables:
         for label, value in (("s1_deg", self.s1_deg), ("s2_deg", self.s2_deg), ("s3_deg", self.s3_deg)):
             if not (0.0 < value < 85.0):
                 raise ValueError(f"{label} must lie in (0, 85), got {value}")
+        if not (-85.0 < self.med_3_te_sweep_deg < 85.0):
+            raise ValueError(
+                f"med_3_te_sweep_deg must lie in (-85, 85), got {self.med_3_te_sweep_deg}"
+            )
 
         for label, value in (
             ("twist_c1_deg", self.twist_c1_deg),
@@ -521,6 +527,7 @@ class SectionedBWBDesignVariables:
                 s1_deg=self.s1_deg,
                 s2_deg=self.s2_deg,
                 s3_deg=self.s3_deg,
+                med_3_te_sweep_deg=self.med_3_te_sweep_deg,
                 continuity_order=2,
                 blend_fraction=0.10,
                 min_linear_core_fraction=0.75,
