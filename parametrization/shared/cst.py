@@ -28,49 +28,102 @@ def fit_kulfan_airfoil_coefficients(
     regularization: float = 1.0e-6,
     smoothness_weight: float = 0.0,
     shared_leading_edge: bool = False,
+    x_lower: Optional[np.ndarray] = None,
 ) -> tuple[np.ndarray, np.ndarray]:
-    x = np.asarray(x, dtype=float)
+    x_upper = np.asarray(x, dtype=float)
+    x_lower_arr = x_upper if x_lower is None else np.asarray(x_lower, dtype=float)
     y_upper = np.asarray(y_upper, dtype=float)
     y_lower = np.asarray(y_lower, dtype=float)
-    if x.ndim != 1 or y_upper.ndim != 1 or y_lower.ndim != 1:
-        raise ValueError("x, y_upper and y_lower must be 1D arrays")
-    if not (x.size == y_upper.size == y_lower.size):
-        raise ValueError("x, y_upper and y_lower must have the same length")
+    if x_upper.ndim != 1 or x_lower_arr.ndim != 1 or y_upper.ndim != 1 or y_lower.ndim != 1:
+        raise ValueError("x_upper, x_lower, y_upper and y_lower must be 1D arrays")
+    if x_upper.size != y_upper.size:
+        raise ValueError("x_upper and y_upper must have the same length")
+    if x_lower_arr.size != y_lower.size:
+        raise ValueError("x_lower and y_lower must have the same length")
 
-    interior = (x > 1.0e-4) & (x < 0.99)
-    if np.count_nonzero(interior) < degree + 1:
+    interior_upper = (x_upper > 1.0e-4) & (x_upper < 0.99)
+    interior_lower = (x_lower_arr > 1.0e-4) & (x_lower_arr < 0.99)
+    if np.count_nonzero(interior_upper) < degree + 1:
         raise ValueError(
-            f"not enough interior samples to fit degree {degree} CST coefficients; "
-            f"need at least {degree + 1}, got {np.count_nonzero(interior)}"
+            f"not enough upper-surface samples to fit degree {degree} CST coefficients; "
+            f"need at least {degree + 1}, got {np.count_nonzero(interior_upper)}"
+        )
+    if np.count_nonzero(interior_lower) < degree + 1:
+        raise ValueError(
+            f"not enough lower-surface samples to fit degree {degree} CST coefficients; "
+            f"need at least {degree + 1}, got {np.count_nonzero(interior_lower)}"
         )
 
-    x_fit = x[interior]
-    class_fun = (x_fit**float(n1)) * ((1.0 - x_fit) ** float(n2))
-    basis = bernstein_matrix(x_fit, degree)
+    x_fit_upper = x_upper[interior_upper]
+    x_fit_lower = x_lower_arr[interior_lower]
+    class_fun_upper = (x_fit_upper**float(n1)) * ((1.0 - x_fit_upper) ** float(n2))
+    class_fun_lower = (x_fit_lower**float(n1)) * ((1.0 - x_fit_lower) ** float(n2))
+    basis_upper = bernstein_matrix(x_fit_upper, degree)
+    basis_lower = bernstein_matrix(x_fit_lower, degree)
 
     # Kulfan evaluation uses a symmetric trailing-edge thickness term:
     # yu = yu_zero + 0.5 * x * te_thickness
     # yl = yl_zero - 0.5 * x * te_thickness
-    upper_rhs = (y_upper[interior] - 0.5 * x_fit * float(te_thickness)) / class_fun
-    lower_rhs = -(y_lower[interior] + 0.5 * x_fit * float(te_thickness)) / class_fun
+    upper_rhs = (y_upper[interior_upper] - 0.5 * x_fit_upper * float(te_thickness)) / class_fun_upper
+    lower_rhs = -(y_lower[interior_lower] + 0.5 * x_fit_lower * float(te_thickness)) / class_fun_lower
 
-    eye = float(regularization) * np.eye(degree + 1)
-    normal_matrix = basis.T @ basis + eye
     smoothness = float(smoothness_weight)
-    if smoothness > 0.0 and degree >= 2:
-        d2 = np.zeros((degree - 1, degree + 1), dtype=float)
-        for row in range(degree - 1):
-            d2[row, row] = 1.0
-            d2[row, row + 1] = -2.0
-            d2[row, row + 2] = 1.0
-        normal_matrix = normal_matrix + smoothness * (d2.T @ d2)
-    upper = np.linalg.solve(normal_matrix, basis.T @ upper_rhs)
-    lower = np.linalg.solve(normal_matrix, basis.T @ lower_rhs)
 
-    if shared_leading_edge and upper.size > 0:
-        a0_shared = 0.5 * (float(upper[0]) + float(lower[0]))
-        upper[0] = a0_shared
-        lower[0] = a0_shared
+    if shared_leading_edge and degree >= 0:
+        rest_upper = basis_upper[:, 1:]
+        rest_lower = basis_lower[:, 1:]
+        zeros_upper = np.zeros((basis_upper.shape[0], degree), dtype=float)
+        zeros_lower = np.zeros((basis_lower.shape[0], degree), dtype=float)
+        a_upper = np.hstack([basis_upper[:, :1], rest_upper, zeros_upper])
+        a_lower = np.hstack([basis_lower[:, :1], zeros_lower, rest_lower])
+        design = np.vstack([a_upper, a_lower])
+        rhs = np.concatenate([upper_rhs, lower_rhs], dtype=float)
+
+        normal_matrix = design.T @ design + float(regularization) * np.eye(1 + 2 * degree)
+
+        if smoothness > 0.0 and degree >= 2:
+            d2 = np.zeros((degree - 1, degree + 1), dtype=float)
+            for row in range(degree - 1):
+                d2[row, row] = 1.0
+                d2[row, row + 1] = -2.0
+                d2[row, row + 2] = 1.0
+
+            map_upper = np.zeros((degree + 1, 1 + 2 * degree), dtype=float)
+            map_lower = np.zeros((degree + 1, 1 + 2 * degree), dtype=float)
+            map_upper[0, 0] = 1.0
+            map_lower[0, 0] = 1.0
+            if degree > 0:
+                map_upper[1:, 1 : degree + 1] = np.eye(degree)
+                map_lower[1:, degree + 1 :] = np.eye(degree)
+
+            normal_matrix = normal_matrix + smoothness * (
+                map_upper.T @ d2.T @ d2 @ map_upper
+                + map_lower.T @ d2.T @ d2 @ map_lower
+            )
+
+        solution = np.linalg.solve(normal_matrix, design.T @ rhs)
+        upper = np.empty(degree + 1, dtype=float)
+        lower = np.empty(degree + 1, dtype=float)
+        upper[0] = float(solution[0])
+        lower[0] = float(solution[0])
+        if degree > 0:
+            upper[1:] = solution[1 : degree + 1]
+            lower[1:] = solution[degree + 1 :]
+    else:
+        eye = float(regularization) * np.eye(degree + 1)
+        normal_matrix_upper = basis_upper.T @ basis_upper + eye
+        normal_matrix_lower = basis_lower.T @ basis_lower + eye
+        if smoothness > 0.0 and degree >= 2:
+            d2 = np.zeros((degree - 1, degree + 1), dtype=float)
+            for row in range(degree - 1):
+                d2[row, row] = 1.0
+                d2[row, row + 1] = -2.0
+                d2[row, row + 2] = 1.0
+            smooth_matrix = smoothness * (d2.T @ d2)
+            normal_matrix_upper = normal_matrix_upper + smooth_matrix
+            normal_matrix_lower = normal_matrix_lower + smooth_matrix
+        upper = np.linalg.solve(normal_matrix_upper, basis_upper.T @ upper_rhs)
+        lower = np.linalg.solve(normal_matrix_lower, basis_lower.T @ lower_rhs)
 
     return upper.astype(float), lower.astype(float)
 

@@ -1,1 +1,1 @@
-"""CTA parametrization helper scripts."""
+"""CTA helper scripts organized by topic."""

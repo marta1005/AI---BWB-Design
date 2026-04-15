@@ -258,7 +258,8 @@ class SectionedBWBDesignVariables:
     c3_lower_cst: Tuple[float, ...] = field(
         default_factory=lambda: _full_surface_seed(5, 0.225, 0.175, 1.30, 2.05, 0.022)
     )
-    # CTA reference: C4 and C5 use the same non-dimensional airfoil profile.
+    # Default convention: C4 and C5 share the same non-dimensional airfoil
+    # profile in the outer wing strip.
     c4_upper_cst: Tuple[float, ...] = field(
         default_factory=lambda: _full_surface_seed(5, 0.280, 0.240, 1.24, 1.95, 0.028)
     )
@@ -269,7 +270,7 @@ class SectionedBWBDesignVariables:
     @classmethod
     def reference_seed(cls) -> "SectionedBWBDesignVariables":
         seed = cls()
-        # CTA reference convention: C4 and C5 use the same non-dimensional
+        # Default convention: C4 and C5 use the same non-dimensional
         # thickness/profile definition in the outer wing strip.
         return replace(
             seed,
@@ -279,6 +280,10 @@ class SectionedBWBDesignVariables:
             c4_upper_cst=seed.c3_upper_cst,
             c4_lower_cst=seed.c3_lower_cst,
         )
+
+    @classmethod
+    def seed(cls) -> "SectionedBWBDesignVariables":
+        return cls.reference_seed()
 
     @classmethod
     def _tuple_field_map(cls) -> Dict[str, int]:

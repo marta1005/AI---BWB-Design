@@ -273,9 +273,9 @@ class SegmentedSpanAxis:
 
             if left_exact and right_exact:
                 # Allow a hard geometric corner when two neighboring segments are
-                # both declared exact. This is required for CTA-style trailing
-                # edges where one exact vertical segment transitions into a
-                # different exact outer-wing line at C4.
+                # both declared exact. This supports planforms where one exact
+                # inboard TE segment transitions into a different exact
+                # outboard line at a real geometric break.
                 continue
             if right_exact and not left_exact:
                 self.widths_left[idx] = self.blend_fraction * dy_left
@@ -412,6 +412,36 @@ class SectionedPlanform:
         return self.te_axis(float(y))
 
 
+def _build_span_axis(
+    points: np.ndarray,
+    continuity_order: int,
+    blend_fraction: float,
+    min_linear_core_fraction: float,
+    exact_segment_indices=(),
+    spline_bridge=None,
+    linear_start_index=None,
+    inboard_radius_factor: float = 1.0,
+):
+    if linear_start_index is not None:
+        return HybridSplineLinearAxis(points, linear_start_index=int(linear_start_index))
+
+    if spline_bridge is not None:
+        return SplineBridgeAxis(
+            points,
+            start_index=int(spline_bridge[0]),
+            end_index=int(spline_bridge[1]),
+            inboard_radius_factor=inboard_radius_factor,
+        )
+
+    return SegmentedSpanAxis(
+        points,
+        continuity_order=continuity_order,
+        blend_fraction=blend_fraction,
+        min_linear_core_fraction=min_linear_core_fraction,
+        exact_segment_indices=exact_segment_indices,
+    )
+
+
 def build_sectioned_bwb_planform(
     topology: SectionedBWBTopologySpec,
     planform: PlanformSpec,
@@ -421,13 +451,16 @@ def build_sectioned_bwb_planform(
     le_sections = planform.leading_edge_x_sections(topology)
     te_sections = planform.trailing_edge_x_sections(topology)
 
-    le_axis = SegmentedSpanAxis(
+    le_axis = _build_span_axis(
         le_points,
         continuity_order=planform.continuity_order,
         blend_fraction=planform.blend_fraction,
         min_linear_core_fraction=planform.min_linear_core_fraction,
+        exact_segment_indices=planform.le_exact_segments,
+        spline_bridge=planform.le_spline_bridge,
+        linear_start_index=planform.le_linear_start_index,
     )
-    te_axis = SegmentedSpanAxis(
+    te_axis = _build_span_axis(
         te_points,
         continuity_order=planform.continuity_order,
         blend_fraction=(
@@ -441,14 +474,9 @@ def build_sectioned_bwb_planform(
             else planform.te_min_linear_core_fraction
         ),
         exact_segment_indices=planform.te_exact_segments,
+        spline_bridge=planform.te_spline_bridge,
+        inboard_radius_factor=planform.te_inboard_radius_factor,
     )
-    if planform.te_spline_bridge is not None:
-        te_axis = SplineBridgeAxis(
-            te_points,
-            start_index=int(planform.te_spline_bridge[0]),
-            end_index=int(planform.te_spline_bridge[1]),
-            inboard_radius_factor=planform.te_inboard_radius_factor,
-        )
 
     if planform.symmetry_blend_y > 1e-12:
         le_slope0 = float((le_points[1, 0] - le_points[0, 0]) / max(le_points[1, 1] - le_points[0, 1], 1e-12))

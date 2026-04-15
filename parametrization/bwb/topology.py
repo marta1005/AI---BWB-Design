@@ -12,6 +12,7 @@ class SectionedBWBTopologySpec:
     b1_span_ratio: float = 0.18
     b2_span_ratio: float = 0.12
     b3_span_ratio: float = 0.70
+    section_y: Optional[Tuple[float, ...]] = None
     anchor_y: Optional[Tuple[float, ...]] = None
     topology_name: str = "cbs_bwb_v4"
 
@@ -21,14 +22,24 @@ class SectionedBWBTopologySpec:
 
     @property
     def y1(self) -> float:
+        if self.section_y is not None:
+            if len(self.section_y) < 2:
+                raise ValueError("section_y must contain at least two stations to resolve y1")
+            return float(self.section_y[1])
         return float(self.span * self.b1_span_ratio)
 
     @property
     def y2(self) -> float:
+        if self.section_y is not None:
+            if len(self.section_y) < 3:
+                raise ValueError("section_y must contain at least three stations to resolve y2")
+            return float(self.section_y[2])
         return float(self.span * (self.b1_span_ratio + self.b2_span_ratio))
 
     @property
     def y_sections(self) -> Tuple[float, ...]:
+        if self.section_y is not None:
+            return tuple(float(value) for value in self.section_y)
         return (0.0, self.y1, self.y2, self.span)
 
     @property
@@ -47,13 +58,18 @@ class SectionedBWBTopologySpec:
         if self.span <= 0.0:
             raise ValueError(f"span must be positive, got {self.span:.6f}")
 
-        ratios = (self.b1_span_ratio, self.b2_span_ratio, self.b3_span_ratio)
-        if not all(value > 0.0 for value in ratios):
-            raise ValueError(f"B ratios must be positive, got {ratios}")
-        if abs(self.b_ratio_sum - 1.0) > 1e-9:
+        if self.section_y is None:
+            ratios = (self.b1_span_ratio, self.b2_span_ratio, self.b3_span_ratio)
+            if not all(value > 0.0 for value in ratios):
+                raise ValueError(f"B ratios must be positive, got {ratios}")
+            if abs(self.b_ratio_sum - 1.0) > 1e-9:
+                raise ValueError(
+                    "b1_span_ratio + b2_span_ratio + b3_span_ratio must equal 1.0 "
+                    f"for semispan-based segment ratios, got {self.b_ratio_sum:.12f}"
+                )
+        elif len(self.section_y) < 2:
             raise ValueError(
-                "b1_span_ratio + b2_span_ratio + b3_span_ratio must equal 1.0 "
-                f"for semispan-based segment ratios, got {self.b_ratio_sum:.12f}"
+                f"section_y must contain at least 2 spanwise stations, got {self.section_y}"
             )
 
         if not np.all(np.diff(y_sections) > 0.0):

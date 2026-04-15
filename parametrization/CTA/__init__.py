@@ -8,23 +8,13 @@ from .design_space import (
     cta_parameter_metadata,
     sample_cta_designs,
 )
-from .reference import (
+from .case import (
     FIXED_TE_EXACT_SEGMENTS,
     SWEEP_NAME_TO_VARIABLE,
     VARIABLE_TO_SWEEP_NAME,
     apply_cta_fixed_parameters,
-    build_reference_design,
+    build_cta_design,
     to_cta_model_config,
-)
-from .gemseo_space import (
-    CTAGemseoDesignSpaceAdapter,
-    CTAGemseoVariableSpec,
-    CTASampleGeometryEvaluation,
-    available_cta_gemseo_doe_algorithms,
-    build_cta_gemseo_design_space,
-    build_cta_gemseo_design_space_definition,
-    evaluate_cta_gemseo_sample_geometry,
-    sample_cta_gemseo_doe,
 )
 
 __all__ = [
@@ -35,17 +25,9 @@ __all__ = [
     "VARIABLE_TO_SWEEP_NAME",
     "apply_cta_fixed_parameters",
     "build_cta_design_space",
-    "build_reference_design",
-    "CTAGemseoDesignSpaceAdapter",
-    "CTAGemseoVariableSpec",
-    "CTASampleGeometryEvaluation",
-    "available_cta_gemseo_doe_algorithms",
-    "build_cta_gemseo_design_space",
-    "build_cta_gemseo_design_space_definition",
+    "build_cta_design",
     "cta_fixed_parameters",
     "cta_parameter_metadata",
-    "evaluate_cta_gemseo_sample_geometry",
     "sample_cta_designs",
-    "sample_cta_gemseo_doe",
     "to_cta_model_config",
 ]

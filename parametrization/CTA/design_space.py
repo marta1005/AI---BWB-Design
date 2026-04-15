@@ -6,18 +6,17 @@ from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 
-from parametrization.bwb.design_space import DesignSpace, flatten_design, parameter_info
-from parametrization.bwb.design_variables import SectionedBWBDesignVariables
-
-from .reference import (
-    CTA_REFERENCE_C3_TRANSITION_CHORD_M,
+from .case import (
+    CTA_C3_TRANSITION_CHORD_M,
     SWEEP_NAME_TO_VARIABLE,
     VARIABLE_TO_SWEEP_NAME,
     _chord_sweep_from_leading_edge_sweep,
     apply_cta_fixed_parameters,
-    build_reference_design,
+    build_cta_design,
     cta_fixed_values,
 )
+from parametrization.bwb.design_space import DesignSpace, flatten_design, parameter_info
+from parametrization.bwb.design_variables import SectionedBWBDesignVariables
 
 CTA_FIXED_PARAMETERS: Tuple[str, ...] = (
     "b1_fixed_m",
@@ -146,10 +145,10 @@ def _internal_chord_ratio(c0_body_chord: float, absolute_chord: float) -> float:
 
 def _cta_public_flat_from_design(
     design: SectionedBWBDesignVariables,
-    reference_design: Optional[SectionedBWBDesignVariables] = None,
+    cta_design: Optional[SectionedBWBDesignVariables] = None,
 ) -> Dict[str, float]:
     flat = flatten_design(design)
-    b1_fixed_m = float(cta_fixed_values(reference_design=reference_design or design)["b1_fixed_m"])
+    b1_fixed_m = float(cta_fixed_values(cta_design=cta_design or design)["b1_fixed_m"])
     total_span = float(flat["span"])
     internal_b2_ratio = float(flat["b2_span_ratio"])
     internal_b3_ratio = float(flat["b3_span_ratio"])
@@ -183,9 +182,9 @@ def _cta_public_flat_from_design(
     return flat
 
 
-def _cta_reference_cst_bounds(reference_flat: Dict[str, float]) -> Dict[str, Tuple[float, float]]:
+def _cta_cst_bounds(cta_flat: Dict[str, float]) -> Dict[str, Tuple[float, float]]:
     bounds: Dict[str, Tuple[float, float]] = {}
-    for name, value in reference_flat.items():
+    for name, value in cta_flat.items():
         match = re.fullmatch(r"c[1-4]_(upper|lower)_cst_(\d+)", name)
         if match is None:
             continue
@@ -193,17 +192,17 @@ def _cta_reference_cst_bounds(reference_flat: Dict[str, float]) -> Dict[str, Tup
         if coeff_idx >= len(_CTA_CST_BOUND_HALF_WIDTHS):
             continue
         half_width = float(_CTA_CST_BOUND_HALF_WIDTHS[coeff_idx])
-        reference_value = float(value)
+        cta_value = float(value)
         bounds[name] = (
-            max(0.0, reference_value - half_width),
-            reference_value + half_width,
+            max(0.0, cta_value - half_width),
+            cta_value + half_width,
         )
     return bounds
 
 
-def _cta_public_bounds(reference_design: SectionedBWBDesignVariables) -> Dict[str, Tuple[float, float]]:
+def _cta_public_bounds(cta_design: SectionedBWBDesignVariables) -> Dict[str, Tuple[float, float]]:
     bounds = dict(SectionedBWBDesignVariables.default_bounds())
-    fixed = cta_fixed_values(reference_design=reference_design)
+    fixed = cta_fixed_values(cta_design=cta_design)
     b1_fixed_m = float(fixed["b1_fixed_m"])
     span_lower, span_upper = bounds["span"]
     b2_lower_internal, b2_upper_internal = bounds["b2_span_ratio"]
@@ -232,13 +231,13 @@ def _cta_public_bounds(reference_design: SectionedBWBDesignVariables) -> Dict[st
         _c4_absolute_chord(c0_lower, c4_ratio_lower),
         _c4_absolute_chord(c0_upper, c4_ratio_upper),
     )
-    reference_flat = _cta_public_flat_from_design(reference_design, reference_design=reference_design)
+    cta_flat = _cta_public_flat_from_design(cta_design, cta_design=cta_design)
     bounds.update(CTA_PUBLIC_ACTIVE_BOUNDS)
-    bounds.update(_cta_reference_cst_bounds(reference_flat))
+    bounds.update(_cta_cst_bounds(cta_flat))
     for name in CTA_ACTIVE_VARIABLES:
         lower, upper = bounds[name]
-        reference_value = float(reference_flat[name])
-        bounds[name] = (min(lower, reference_value), max(upper, reference_value))
+        cta_value = float(cta_flat[name])
+        bounds[name] = (min(lower, cta_value), max(upper, cta_value))
     return bounds
 
 
@@ -249,20 +248,23 @@ def _rename_section_tokens(text: str) -> str:
 
 @dataclass
 class CTADesignSpace(DesignSpace):
-    def reference_flat(self) -> Dict[str, float]:
-        return _cta_public_flat_from_design(self.reference_design, reference_design=self.reference_design)
+    def cta_flat(self) -> Dict[str, float]:
+        return _cta_public_flat_from_design(self.seed_design, cta_design=self.seed_design)
+
+    def seed_flat(self) -> Dict[str, float]:
+        return self.cta_flat()
 
     def to_design(
         self,
         sample: Dict[str, float],
     ) -> SectionedBWBDesignVariables:
-        reference_flat = self.reference_flat()
+        cta_flat = self.cta_flat()
         index_map = {
             name: idx
             for idx, name in enumerate(SectionedBWBDesignVariables.variable_names())
         }
-        vector = self.reference_design.as_vector().copy()
-        b1_fixed_m = float(cta_fixed_values(reference_design=self.reference_design)["b1_fixed_m"])
+        vector = self.seed_design.as_vector().copy()
+        b1_fixed_m = float(cta_fixed_values(cta_design=self.seed_design)["b1_fixed_m"])
 
         for name in self.active_variables:
             if name not in sample:
@@ -292,7 +294,7 @@ class CTADesignSpace(DesignSpace):
             vector[index_map[name]] = value
 
         design = SectionedBWBDesignVariables.from_vector(vector)
-        return apply_cta_fixed_parameters(design, reference_design=self.reference_design)
+        return apply_cta_fixed_parameters(design, cta_design=self.seed_design)
 
     def sample_designs(
         self,
@@ -301,30 +303,30 @@ class CTADesignSpace(DesignSpace):
         variation_scale: float = 0.25,
     ) -> List[SectionedBWBDesignVariables]:
         rng = np.random.default_rng(int(seed))
-        reference_flat = self.reference_flat()
+        cta_flat = self.cta_flat()
         index_map = {
             name: idx
             for idx, name in enumerate(SectionedBWBDesignVariables.variable_names())
         }
-        reference_vector = self.reference_design.as_vector()
+        cta_vector = self.seed_design.as_vector()
         internal_bounds = SectionedBWBDesignVariables.default_bounds()
-        b1_fixed_m = float(cta_fixed_values(reference_design=self.reference_design)["b1_fixed_m"])
+        b1_fixed_m = float(cta_fixed_values(cta_design=self.seed_design)["b1_fixed_m"])
         sampled: List[SectionedBWBDesignVariables] = []
 
         for _ in range(int(count)):
             last_error: Optional[ValueError] = None
             for _attempt in range(200):
-                vector = reference_vector.copy()
+                vector = cta_vector.copy()
                 for name in self.active_variables:
                     if name == "span":
-                        wing_span_lower, wing_span_upper = self._local_bounds(name, reference_flat[name], variation_scale)
+                        wing_span_lower, wing_span_upper = self._local_bounds(name, cta_flat[name], variation_scale)
                         sampled_wing_span = rng.uniform(wing_span_lower, wing_span_upper)
                         vector[index_map["span"]] = _total_span_from_wing_span(sampled_wing_span, b1_fixed_m)
                         continue
                     if name == "b2_span_ratio":
                         span_here = float(vector[index_map["span"]])
                         global_lower, global_upper = internal_bounds["b2_span_ratio"]
-                        ref_internal = float(self.reference_design.b2_span_ratio)
+                        ref_internal = float(self.seed_design.b2_span_ratio)
                         span_internal = global_upper - global_lower
                         local_lower_internal = max(global_lower, ref_internal - variation_scale * span_internal)
                         local_upper_internal = min(global_upper, ref_internal + variation_scale * span_internal)
@@ -335,13 +337,13 @@ class CTADesignSpace(DesignSpace):
                         vector[index_map[name]] = _internal_b2_span_ratio(span_here, sampled_public, b1_fixed_m)
                         continue
                     if name == "c2_c1_ratio":
-                        c3_lower, c3_upper = self._local_bounds(name, reference_flat[name], variation_scale)
+                        c3_lower, c3_upper = self._local_bounds(name, cta_flat[name], variation_scale)
                         sampled_c3 = rng.uniform(c3_lower, c3_upper)
                         c0_here = float(vector[index_map["c1_root_chord"]])
                         vector[index_map["c2_c1_ratio"]] = _internal_chord_ratio(c0_here, sampled_c3)
                         continue
                     if name == "c4_c3_ratio":
-                        taper_lower, taper_upper = self._local_bounds(name, reference_flat[name], variation_scale)
+                        taper_lower, taper_upper = self._local_bounds(name, cta_flat[name], variation_scale)
                         sampled_taper = rng.uniform(taper_lower, taper_upper)
                         c0_here = float(vector[index_map["c1_root_chord"]])
                         c3_here = _absolute_chord(c0_here, float(vector[index_map["c2_c1_ratio"]]))
@@ -349,19 +351,19 @@ class CTADesignSpace(DesignSpace):
                         vector[index_map["c3_c1_ratio"]] = _internal_c4_ratio(c0_here, c4_here)
                         continue
                     if name == "c4_c1_ratio":
-                        c5_lower, c5_upper = self._local_bounds(name, reference_flat[name], variation_scale)
+                        c5_lower, c5_upper = self._local_bounds(name, cta_flat[name], variation_scale)
                         sampled_c5 = rng.uniform(c5_lower, c5_upper)
                         c0_here = float(vector[index_map["c1_root_chord"]])
                         vector[index_map["c4_c1_ratio"]] = _internal_c5_ratio(c0_here, sampled_c5)
                         continue
 
-                    lower, upper = self._local_bounds(name, reference_flat[name], variation_scale)
+                    lower, upper = self._local_bounds(name, cta_flat[name], variation_scale)
                     vector[index_map[name]] = rng.uniform(lower, upper)
 
                 try:
                     sampled_design = SectionedBWBDesignVariables.from_vector(vector)
                     sampled.append(
-                        apply_cta_fixed_parameters(sampled_design, reference_design=self.reference_design)
+                        apply_cta_fixed_parameters(sampled_design, cta_design=self.seed_design)
                     )
                     break
                 except ValueError as exc:
@@ -376,7 +378,7 @@ class CTADesignSpace(DesignSpace):
 
 
 def build_cta_design_space(
-    reference_design: Optional[SectionedBWBDesignVariables] = None,
+    cta_design: Optional[SectionedBWBDesignVariables] = None,
 ) -> DesignSpace:
     """
     Build CTA AI design space with requested fixed/variable split:
@@ -385,32 +387,32 @@ def build_cta_design_space(
     - variable: wing span, B2 fraction, C0, C3, transition taper ratio C4/C3, C5,
       public chord sweeps S1/S2, twists, and CST.
     """
-    reference = build_reference_design() if reference_design is None else reference_design
-    reference = apply_cta_fixed_parameters(reference, reference_design=reference)
-    bounds = _cta_public_bounds(reference)
+    design = build_cta_design() if cta_design is None else cta_design
+    design = apply_cta_fixed_parameters(design, cta_design=design)
+    bounds = _cta_public_bounds(design)
     return CTADesignSpace(
-        preset_name="cta_reference_ai_core",
+        preset_name="cta_ai_core",
         active_groups=("cta_core",),
         active_variables=CTA_ACTIVE_VARIABLES,
-        reference_design=reference,
+        seed_design=design,
         bounds=bounds,
     )
 
 
 def cta_fixed_parameters(
-    reference_design: Optional[SectionedBWBDesignVariables] = None,
+    cta_design: Optional[SectionedBWBDesignVariables] = None,
 ) -> Dict[str, object]:
     """Fixed CTA values plus naming aliases for presentation."""
-    reference = build_reference_design() if reference_design is None else reference_design
-    fixed = cta_fixed_values(reference_design=reference)
-    public_reference = _cta_public_flat_from_design(reference, reference_design=reference)
+    design = build_cta_design() if cta_design is None else cta_design
+    fixed = cta_fixed_values(cta_design=design)
+    cta_view = _cta_public_flat_from_design(design, cta_design=design)
     fixed.update(
         {
             "sweep_naming": dict(SWEEP_NAME_TO_VARIABLE),
-            "legacy_reference": {
+            "legacy_cta_view": {
                 "S(legacy S1)": fixed["s_deg"],
-                "S1(50%-chord)": public_reference["s2_deg"],
-                "S2(25%-chord)": public_reference["s3_deg"],
+                "S1(50%-chord)": cta_view["s2_deg"],
+                "S2(25%-chord)": cta_view["s3_deg"],
             },
             "notes": (
                 "CTA keeps B1 fixed in absolute meters while wing span can vary. "
@@ -438,11 +440,11 @@ def cta_fixed_parameters(
 
 
 def cta_parameter_metadata(
-    reference_design: Optional[SectionedBWBDesignVariables] = None,
+    cta_design: Optional[SectionedBWBDesignVariables] = None,
 ) -> List[Dict[str, object]]:
     """Return active CTA variables with metadata and renamed sweep labels."""
-    design_space = build_cta_design_space(reference_design=reference_design)
-    reference_flat = design_space.reference_flat()
+    design_space = build_cta_design_space(cta_design=cta_design)
+    cta_flat = design_space.cta_flat()
     rows: List[Dict[str, object]] = []
     for name in design_space.active_variables:
         info = dict(parameter_info(name))
@@ -525,7 +527,7 @@ def cta_parameter_metadata(
                 "units": info["units"],
                 "normalization": info["normalization"],
                 "description": info["description"],
-                "reference": float(reference_flat[name]),
+                "cta_value": float(cta_flat[name]),
                 "lower_bound": float(lower),
                 "upper_bound": float(upper),
             }
@@ -537,26 +539,26 @@ def sample_cta_designs(
     count: int,
     seed: int = 7,
     variation_scale: float = 0.25,
-    reference_design: Optional[SectionedBWBDesignVariables] = None,
+    cta_design: Optional[SectionedBWBDesignVariables] = None,
 ) -> List[SectionedBWBDesignVariables]:
     """
     Sample CTA designs from the active AI design-space variables only.
     Fixed parameters remain locked by construction.
     """
-    design_space = build_cta_design_space(reference_design=reference_design)
+    design_space = build_cta_design_space(cta_design=cta_design)
     return design_space.sample_designs(count=count, seed=seed, variation_scale=variation_scale)
 
 
 def cta_design_space_summary(
-    reference_design: Optional[SectionedBWBDesignVariables] = None,
+    cta_design: Optional[SectionedBWBDesignVariables] = None,
 ) -> Dict[str, object]:
     """Compact serializable summary used by docs/scripts."""
-    ds = build_cta_design_space(reference_design=reference_design)
+    ds = build_cta_design_space(cta_design=cta_design)
     return {
         "preset_name": ds.preset_name,
         "active_variable_count": len(ds.active_variables),
         "active_variables": list(ds.active_variables),
-        "fixed_parameters": cta_fixed_parameters(reference_design=ds.reference_design),
-        "reference_active_view": ds.reference_flat(),
-        "reference_design": asdict(ds.reference_design),
+        "fixed_parameters": cta_fixed_parameters(cta_design=ds.seed_design),
+        "cta_active_view": ds.cta_flat(),
+        "cta_design": asdict(ds.seed_design),
     }

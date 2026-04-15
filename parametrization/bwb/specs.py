@@ -91,9 +91,15 @@ class PlanformSpec:
     te_blend_fraction: Optional[float] = None
     te_min_linear_core_fraction: Optional[float] = None
     le_linear_start_index: Optional[int] = None
+    le_exact_segments: Tuple[int, ...] = ()
+    le_spline_bridge: Optional[Tuple[int, int]] = None
     te_spline_bridge: Optional[Tuple[int, int]] = None
     symmetry_blend_y: float = 2.50
     te_exact_segments: Tuple[int, ...] = (0, 3)
+    section_le_x: Optional[Tuple[float, ...]] = None
+    section_chords_override: Optional[Tuple[float, ...]] = None
+    leading_edge_control_points: Optional[Tuple[Tuple[float, float], ...]] = None
+    trailing_edge_control_points: Optional[Tuple[Tuple[float, float], ...]] = None
 
     def validate(self) -> None:
         if self.c1_root_chord <= 0.0:
@@ -129,6 +135,21 @@ class PlanformSpec:
             raise ValueError(
                 f"le_linear_start_index must be >= 1 when provided, got {self.le_linear_start_index}"
             )
+        if any(index < 0 for index in self.le_exact_segments):
+            raise ValueError(
+                f"le_exact_segments must contain non-negative segment indices, got {self.le_exact_segments}"
+            )
+        if self.le_spline_bridge is not None:
+            if len(self.le_spline_bridge) != 2:
+                raise ValueError(
+                    f"le_spline_bridge must contain exactly 2 indices, got {self.le_spline_bridge}"
+                )
+            start_idx, end_idx = self.le_spline_bridge
+            if not (0 < start_idx < end_idx):
+                raise ValueError(
+                    "le_spline_bridge must satisfy 0 < start_idx < end_idx, "
+                    f"got {self.le_spline_bridge}"
+                )
         if self.te_spline_bridge is not None:
             if len(self.te_spline_bridge) != 2:
                 raise ValueError(
@@ -150,7 +171,7 @@ class PlanformSpec:
             )
         if not (0.0 < self.te_c1_span_fraction < self.te_inboard_blend_fraction < 1.0):
             raise ValueError(
-                "CTA TE fractions must satisfy 0 < te_c1_span_fraction < "
+                "TE helper fractions must satisfy 0 < te_c1_span_fraction < "
                 "te_inboard_blend_fraction < 1, got "
                 f"{(self.te_c1_span_fraction, self.te_inboard_blend_fraction)}"
             )
@@ -187,8 +208,14 @@ class PlanformSpec:
                 "med_3_te_helper_fraction must lie in (0, 1), "
                 f"got {self.med_3_te_helper_fraction}"
             )
+        if (self.section_le_x is None) ^ (self.section_chords_override is None):
+            raise ValueError(
+                "section_le_x and section_chords_override must either both be provided or both be omitted"
+            )
 
     def section_chords(self) -> np.ndarray:
+        if self.section_chords_override is not None:
+            return np.asarray(self.section_chords_override, dtype=float)
         return np.asarray(
             (
                 self.c1_root_chord,
@@ -200,6 +227,8 @@ class PlanformSpec:
         )
 
     def leading_edge_x_sections(self, topology: SectionedBWBTopologySpec) -> np.ndarray:
+        if self.section_le_x is not None:
+            return np.asarray(self.section_le_x, dtype=float)
         y_sections = topology.y_sections_array
         segment_dy = np.diff(y_sections)
         segment_sweeps = np.deg2rad([self.s1_deg, self.s2_deg, self.s3_deg])
@@ -213,6 +242,11 @@ class PlanformSpec:
         return self.leading_edge_x_sections(topology) + self.section_chords()
 
     def leading_edge_points(self, topology: SectionedBWBTopologySpec) -> np.ndarray:
+        if self.leading_edge_control_points is not None:
+            return np.asarray(
+                [(float(x_value), float(y_value), 0.0) for x_value, y_value in self.leading_edge_control_points],
+                dtype=float,
+            )
         y_sections = topology.y_sections_array
         le_sections = self.leading_edge_x_sections(topology)
         points = [[float(le_sections[0]), float(y_sections[0]), 0.0]]
@@ -223,12 +257,25 @@ class PlanformSpec:
         return np.asarray(points, dtype=float)
 
     def trailing_edge_points(self, topology: SectionedBWBTopologySpec) -> np.ndarray:
+        if self.trailing_edge_control_points is not None:
+            return np.asarray(
+                [(float(x_value), float(y_value), 0.0) for x_value, y_value in self.trailing_edge_control_points],
+                dtype=float,
+            )
         y_sections = topology.y_sections_array
         te_sections = self.trailing_edge_x_sections(topology)
 
+        if self.section_le_x is not None and self.section_chords_override is not None:
+            return np.asarray(
+                [[float(x_section), float(y_section), 0.0] for x_section, y_section in zip(te_sections, y_sections)],
+                dtype=float,
+            )
+
         y_c3 = float(y_sections[1])
         if y_c3 <= 1e-12:
-            raise ValueError("CTA-style TE auxiliary points require the first main section to lie away from the root")
+            raise ValueError(
+                "TE auxiliary points require the first main section to lie away from the root"
+            )
 
         y_c1 = float(self.te_c1_span_fraction * y_c3)
         y_inboard_blend = float(self.te_inboard_blend_fraction * y_c3)
@@ -240,8 +287,8 @@ class PlanformSpec:
         y_c4 = float(y_sections[2])
         y_tip = float(y_sections[3])
 
-        # CTA reference:
-        # - C0 -> C1 is a straight vertical TE segment.
+        # Default interpretation:
+        # - root -> C1 is a straight vertical TE segment.
         # - C1 -> C3 is a marked blend.
         # - C3 is a real geometric break.
         #
@@ -249,8 +296,8 @@ class PlanformSpec:
         # planform can stay smooth there without exposing a public "C2".
         te_c1 = te_root
         # The inboard hidden helper shapes the marked C1->C3 blend. By default
-        # it lies on the public C1->C3 secant, but CTA can override it with a
-        # fixed aft offset measured from C3 to reproduce the Airbus sketch.
+        # it lies on the public C1->C3 secant, but a case can override it with
+        # a fixed aft offset measured from C3.
         if abs(float(self.te_inboard_blend_dx)) > 1e-12:
             te_inboard_blend = te_c3 + float(self.te_inboard_blend_dx)
             te_inboard_blend = float(min(max(te_c3, te_inboard_blend), te_c1))
@@ -284,11 +331,26 @@ class PlanformSpec:
     def validate_with_topology(self, topology: SectionedBWBTopologySpec) -> None:
         le_x = self.leading_edge_x_sections(topology)
         te_x = self.trailing_edge_x_sections(topology)
+        section_count = topology.y_sections_array.size
+        if le_x.size != section_count:
+            raise ValueError(
+                f"leading-edge section count must match topology sections ({section_count}), got {le_x.size}"
+            )
+        if te_x.size != section_count:
+            raise ValueError(
+                f"trailing-edge section count must match topology sections ({section_count}), got {te_x.size}"
+            )
         chord = te_x - le_x
         if np.any(chord <= 0.0):
             raise ValueError(
                 "non-positive control-section chord detected; "
                 f"LE={tuple(le_x)}, TE={tuple(te_x)}, chord={tuple(chord)}"
+            )
+        le_segment_count = self.leading_edge_points(topology).shape[0] - 1
+        if any(index >= le_segment_count for index in self.le_exact_segments):
+            raise ValueError(
+                f"le_exact_segments must lie inside [0, {le_segment_count - 1}], "
+                f"got {self.le_exact_segments}"
             )
         segment_count = self.trailing_edge_points(topology).shape[0] - 1
         if any(index >= segment_count for index in self.te_exact_segments):
@@ -308,6 +370,13 @@ class PlanformSpec:
             if self.le_linear_start_index >= point_count - 1:
                 raise ValueError(
                     f"le_linear_start_index must be < {point_count - 1}, got {self.le_linear_start_index}"
+                )
+        if self.le_spline_bridge is not None:
+            point_count = self.leading_edge_points(topology).shape[0]
+            start_idx, end_idx = self.le_spline_bridge
+            if end_idx >= point_count - 1:
+                raise ValueError(
+                    f"le_spline_bridge end index must be < {point_count - 1}, got {self.le_spline_bridge}"
                 )
         if self.te_spline_bridge is not None:
             point_count = self.trailing_edge_points(topology).shape[0]

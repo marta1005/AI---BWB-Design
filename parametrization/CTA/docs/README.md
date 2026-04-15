@@ -45,51 +45,20 @@ Geometry note:
 - `TE(C3->C4)` is not constrained to stay straight anymore because `C3` and `C4`
   are both active design variables.
 
-## GEMSEO Layer
-
-`parametrization/CTA/gemseo_space.py` adds a grouped GEMSEO-facing view of the
-same CTA public parameters.
-
-Grouped GEMSEO variables:
-
-- `wing_span`
-- `c0_body_chord`
-- `c3_transition_chord`
-- `c4_outer_wing_chord`
-- `b2_wing_fraction`
-- `c5_wing_tip_chord`
-- `sweeps_deg`
-- `twist_deg`
-- `c0_upper_cst`, `c0_lower_cst`
-- `c3_upper_cst`, `c3_lower_cst`
-- `c4_upper_cst`, `c4_lower_cst`
-- `c5_upper_cst`, `c5_lower_cst`
-
-The adapter can be used in two modes:
-
-- definition only, without `gemseo` installed
-- full GEMSEO backend mode, once `gemseo>=6,<7` is available in the active Python 3.11 environment
-
 ## Useful Commands
 
 Public CTA bounds:
 
 ```bash
-python parametrization/CTA/codes/export_cta_bounds_table.py
-```
-
-GEMSEO grouped bounds:
-
-```bash
-python parametrization/CTA/codes/export_cta_gemseo_bounds_table.py
-python parametrization/CTA/codes/inspect_cta_gemseo_design_space.py
+python parametrization/CTA/codes/exports/export_cta_bounds_table.py
 ```
 
 Geometry export:
 
 ```bash
-python parametrization/CTA/codes/run_reference_iges.py
-python parametrization/CTA/codes/plot_cta_reference_views.py
+python parametrization/CTA/codes/exports/run_cta_iges.py
+python parametrization/CTA/codes/plotting/plot_cta_views.py
+python parametrization/CTA/codes/plotting/plot_cta_vs_glider_vertical_overlay.py
 ```
 
 ## How CTA Parameters Reach pyGeo
@@ -99,7 +68,7 @@ locations, or `te_inboard_radius_factor` directly into `pyGeo`.
 
 Instead, the pipeline is:
 
-1. `parametrization/CTA/reference.py`
+1. `parametrization/CTA/case.py`
    Builds the CTA-specific `SectionedBWBModelConfig`.
 2. `parametrization/bwb/specs.py`
    Converts CTA public sections and helper points into explicit LE/TE control points.
@@ -117,10 +86,3 @@ Instead, the pipeline is:
 
 So a CTA planform parameter affects `pyGeo` only after it has been converted
 into explicit sampled geometry.
-
-DOE sampling with GEMSEO, once installed:
-
-```bash
-python -m pip install -r parametrization/CTA/requirements-gemseo.txt
-python parametrization/CTA/codes/sample_cta_gemseo_doe.py --n-samples 16 --algo LHS
-```

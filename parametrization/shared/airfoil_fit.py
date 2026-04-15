@@ -6,8 +6,9 @@ from pathlib import Path
 from typing import Dict
 
 import numpy as np
+from scipy.interpolate import PchipInterpolator
 
-from .cst import KulfanCSTAirfoil, cosine_spacing, fit_kulfan_airfoil_coefficients
+from .cst import CST, bernstein_matrix, cosine_spacing
 
 
 @dataclass(frozen=True)
@@ -24,9 +25,19 @@ class CSTAirfoilFitOptions:
 
 @dataclass(frozen=True)
 class NormalizedAirfoilSection:
+    upper_x: np.ndarray
+    upper_y: np.ndarray
+    lower_x: np.ndarray
+    lower_y: np.ndarray
+    upper_zero_y: np.ndarray
+    lower_zero_y: np.ndarray
     x_fit: np.ndarray
     y_upper: np.ndarray
     y_lower: np.ndarray
+    upper_scale: float
+    lower_scale: float
+    upper_tail_y: float
+    lower_tail_y: float
     chord: float
     twist_deg: float
     te_thickness: float
@@ -45,6 +56,10 @@ class AirfoilSectionFitResult:
     fit_y_lower: np.ndarray
     upper_cst: np.ndarray
     lower_cst: np.ndarray
+    upper_scale: float
+    lower_scale: float
+    upper_tail_y: float
+    lower_tail_y: float
     chord: float
     twist_deg: float
     te_thickness: float
@@ -77,6 +92,50 @@ def split_airfoil_upper_lower(section: np.ndarray) -> tuple[np.ndarray, np.ndarr
     return upper, lower
 
 
+def _interp_shape_preserving(x_src: np.ndarray, y_src: np.ndarray, x_dst: np.ndarray) -> np.ndarray:
+    x_src = np.asarray(x_src, dtype=float)
+    y_src = np.asarray(y_src, dtype=float)
+    x_dst = np.asarray(x_dst, dtype=float)
+
+    unique_x, unique_idx = np.unique(x_src, return_index=True)
+    unique_y = y_src[unique_idx]
+    if unique_x.size < 2:
+        return np.full_like(x_dst, float(unique_y[0]), dtype=float)
+
+    interpolant = PchipInterpolator(unique_x, unique_y)
+    return np.asarray(interpolant(x_dst), dtype=float)
+
+
+def _fit_surface_cst_coefficients(
+    x: np.ndarray,
+    y: np.ndarray,
+    degree: int,
+    n1: float,
+    n2: float,
+    regularization: float = 1.0e-8,
+    smoothness_weight: float = 0.0,
+) -> np.ndarray:
+    x = np.asarray(x, dtype=float)
+    y = np.asarray(y, dtype=float)
+    if x.ndim != 1 or y.ndim != 1 or x.size != y.size:
+        raise ValueError("x and y must be 1D arrays with the same length")
+
+    class_fun = (x**float(n1)) * ((1.0 - x) ** float(n2))
+    basis = bernstein_matrix(x, degree)
+    design = class_fun[:, None] * basis
+
+    normal_matrix = design.T @ design + float(regularization) * np.eye(degree + 1)
+    if smoothness_weight > 0.0 and degree >= 2:
+        d2 = np.zeros((degree - 1, degree + 1), dtype=float)
+        for row in range(degree - 1):
+            d2[row, row] = 1.0
+            d2[row, row + 1] = -2.0
+            d2[row, row + 2] = 1.0
+        normal_matrix = normal_matrix + float(smoothness_weight) * (d2.T @ d2)
+
+    return np.linalg.solve(normal_matrix, design.T @ y).astype(float)
+
+
 def normalize_airfoil_section(section: np.ndarray, sample_count: int = 301) -> NormalizedAirfoilSection:
     upper_raw, lower_raw = split_airfoil_upper_lower(section)
 
@@ -98,20 +157,44 @@ def normalize_airfoil_section(section: np.ndarray, sample_count: int = 301) -> N
     # Upper arrives TE->LE in the source order, so reverse it to interpolate LE->TE.
     upper_local = upper_local[::-1]
 
-    upper_x = upper_local[:, 0] / chord
-    upper_z = upper_local[:, 1] / chord
-    lower_x = lower_local[:, 0] / chord
-    lower_z = lower_local[:, 1] / chord
+    upper_scale = float(upper_local[-1, 0])
+    lower_scale = float(lower_local[-1, 0])
+    if upper_scale <= 0.0 or lower_scale <= 0.0:
+        raise ValueError(f"invalid surface scales {(upper_scale, lower_scale)}")
+
+    # Match cst-modeling's normalize_foil(): each surface is scaled by its own
+    # trailing-edge x-coordinate after the de-twisting rotation.
+    upper_x = upper_local[:, 0] / upper_scale
+    upper_z = upper_local[:, 1] / upper_scale
+    lower_x = lower_local[:, 0] / lower_scale
+    lower_z = lower_local[:, 1] / lower_scale
+
+    upper_tail_y = float(upper_z[-1])
+    lower_tail_y = float(lower_z[-1])
+    upper_zero_y = upper_z - upper_x * upper_tail_y
+    lower_zero_y = lower_z - lower_x * lower_tail_y
 
     x_fit = cosine_spacing(sample_count)
-    y_upper = np.interp(x_fit, upper_x, upper_z)
-    y_lower = np.interp(x_fit, lower_x, lower_z)
-    te_thickness = float(y_upper[-1] - y_lower[-1])
+    # Compare and fit in the same per-surface normalized frame used by the
+    # original cst-modeling code path.
+    y_upper = _interp_shape_preserving(upper_x, upper_z, x_fit)
+    y_lower = _interp_shape_preserving(lower_x, lower_z, x_fit)
+    te_thickness = float(upper_tail_y - lower_tail_y)
 
     return NormalizedAirfoilSection(
+        upper_x=upper_x,
+        upper_y=upper_z,
+        lower_x=lower_x,
+        lower_y=lower_z,
+        upper_zero_y=upper_zero_y,
+        lower_zero_y=lower_zero_y,
         x_fit=x_fit,
         y_upper=y_upper,
         y_lower=y_lower,
+        upper_scale=upper_scale,
+        lower_scale=lower_scale,
+        upper_tail_y=upper_tail_y,
+        lower_tail_y=lower_tail_y,
         chord=chord,
         twist_deg=twist_deg,
         te_thickness=te_thickness,
@@ -130,37 +213,52 @@ def fit_airfoil_section_cst(
     normalized = normalize_airfoil_section(section, sample_count=fit_options.sample_count)
 
     x_fit = np.asarray(normalized.x_fit, dtype=float)
+    upper_x = np.asarray(normalized.upper_x, dtype=float)
+    upper_y = np.asarray(normalized.upper_y, dtype=float)
+    lower_x = np.asarray(normalized.lower_x, dtype=float)
+    lower_y = np.asarray(normalized.lower_y, dtype=float)
+    upper_zero_y = np.asarray(normalized.upper_zero_y, dtype=float)
+    lower_zero_y = np.asarray(normalized.lower_zero_y, dtype=float)
     y_upper = np.asarray(normalized.y_upper, dtype=float)
     y_lower = np.asarray(normalized.y_lower, dtype=float)
+    upper_tail_y = float(normalized.upper_tail_y)
+    lower_tail_y = float(normalized.lower_tail_y)
     te_thickness = float(normalized.te_thickness)
 
-    fit_mask = (x_fit >= float(fit_options.fit_xmin)) & (x_fit < float(fit_options.fit_xmax))
-    if np.count_nonzero(fit_mask) < fit_options.degree + 1:
+    fit_mask_upper = (upper_x >= float(fit_options.fit_xmin)) & (upper_x < float(fit_options.fit_xmax))
+    fit_mask_lower = (lower_x >= float(fit_options.fit_xmin)) & (lower_x < float(fit_options.fit_xmax))
+    if np.count_nonzero(fit_mask_upper) < fit_options.degree + 1:
         raise ValueError(
             f"not enough fit samples for degree {fit_options.degree}: "
-            f"{np.count_nonzero(fit_mask)} available"
+            f"{np.count_nonzero(fit_mask_upper)} upper samples available"
+        )
+    if np.count_nonzero(fit_mask_lower) < fit_options.degree + 1:
+        raise ValueError(
+            f"not enough fit samples for degree {fit_options.degree}: "
+            f"{np.count_nonzero(fit_mask_lower)} lower samples available"
         )
 
-    upper_cst, lower_cst = fit_kulfan_airfoil_coefficients(
-        x=x_fit[fit_mask],
-        y_upper=y_upper[fit_mask],
-        y_lower=y_lower[fit_mask],
+    upper_cst = _fit_surface_cst_coefficients(
+        x=upper_x[fit_mask_upper],
+        y=upper_zero_y[fit_mask_upper],
         degree=fit_options.degree,
         n1=fit_options.n1,
         n2=fit_options.n2,
-        te_thickness=te_thickness,
         smoothness_weight=fit_options.smoothness_weight,
-        shared_leading_edge=fit_options.shared_leading_edge,
+    )
+    lower_cst = _fit_surface_cst_coefficients(
+        x=lower_x[fit_mask_lower],
+        y=lower_zero_y[fit_mask_lower],
+        degree=fit_options.degree,
+        n1=fit_options.n1,
+        n2=fit_options.n2,
+        smoothness_weight=fit_options.smoothness_weight,
     )
 
-    airfoil = KulfanCSTAirfoil(
-        degree=fit_options.degree,
-        n1=fit_options.n1,
-        n2=fit_options.n2,
-        shared_leading_edge=fit_options.shared_leading_edge,
-    )
-    coeffs = np.concatenate([upper_cst, lower_cst], dtype=float)
-    fit_y_upper, fit_y_lower = airfoil.evaluate(x_fit, coeffs, te_thickness=te_thickness)
+    fit_y_upper = CST(upper_cst, n1=fit_options.n1, n2=fit_options.n2, delta_te=0.0).evaluate(x_fit)
+    fit_y_upper = fit_y_upper + x_fit * upper_tail_y
+    fit_y_lower = CST(lower_cst, n1=fit_options.n1, n2=fit_options.n2, delta_te=0.0).evaluate(x_fit)
+    fit_y_lower = fit_y_lower + x_fit * lower_tail_y
 
     error_upper = fit_y_upper - y_upper
     error_lower = fit_y_lower - y_lower
@@ -173,6 +271,10 @@ def fit_airfoil_section_cst(
         fit_y_lower=fit_y_lower,
         upper_cst=upper_cst,
         lower_cst=lower_cst,
+        upper_scale=float(normalized.upper_scale),
+        lower_scale=float(normalized.lower_scale),
+        upper_tail_y=upper_tail_y,
+        lower_tail_y=lower_tail_y,
         chord=float(normalized.chord),
         twist_deg=float(normalized.twist_deg),
         te_thickness=te_thickness,

@@ -438,11 +438,11 @@ def parameter_info(parameter_name: str) -> Dict[str, str]:
 
 
 def parameter_metadata(
-    reference_design: Optional[SectionedBWBDesignVariables] = None,
+    seed_design: Optional[SectionedBWBDesignVariables] = None,
 ) -> List[Dict[str, object]]:
-    if reference_design is None:
-        reference_design = SectionedBWBDesignVariables.reference_seed()
-    flat_reference = flatten_design(reference_design)
+    if seed_design is None:
+        seed_design = SectionedBWBDesignVariables.reference_seed()
+    flat_seed = flatten_design(seed_design)
     bounds = SectionedBWBDesignVariables.default_bounds()
     groups = parameter_groups()
     reverse_group = {}
@@ -463,7 +463,7 @@ def parameter_metadata(
                 "units": info["units"],
                 "normalization": info["normalization"],
                 "description": info["description"],
-                "reference": float(flat_reference[name]),
+                "seed_value": float(flat_seed[name]),
                 "lower_bound": float(lower),
                 "upper_bound": float(upper),
             }
@@ -476,14 +476,14 @@ class DesignSpace:
     preset_name: str
     active_groups: Tuple[str, ...]
     active_variables: Tuple[str, ...]
-    reference_design: SectionedBWBDesignVariables
+    seed_design: SectionedBWBDesignVariables
     bounds: Dict[str, Tuple[float, float]]
 
-    def reference_flat(self) -> Dict[str, float]:
-        return flatten_design(self.reference_design)
+    def seed_flat(self) -> Dict[str, float]:
+        return flatten_design(self.seed_design)
 
     def active_metadata(self) -> List[Dict[str, object]]:
-        metadata = {row["parameter"]: row for row in parameter_metadata(self.reference_design)}
+        metadata = {row["parameter"]: row for row in parameter_metadata(self.seed_design)}
         return [metadata[name] for name in self.active_variables]
 
     def sample_designs(
@@ -493,19 +493,19 @@ class DesignSpace:
         variation_scale: float = 0.25,
     ) -> List[SectionedBWBDesignVariables]:
         rng = np.random.default_rng(int(seed))
-        reference_flat = self.reference_flat()
+        seed_flat = self.seed_flat()
         index_map = {
             name: idx
             for idx, name in enumerate(SectionedBWBDesignVariables.variable_names())
         }
-        reference_vector = self.reference_design.as_vector()
+        seed_vector = self.seed_design.as_vector()
         sampled: List[SectionedBWBDesignVariables] = []
 
         for _ in range(int(count)):
-            vector = reference_vector.copy()
+            vector = seed_vector.copy()
             active_set = set(self.active_variables)
             if {"b1_span_ratio", "b2_span_ratio", "b3_span_ratio"} & active_set:
-                b1, b2, b3 = self._sample_b_ratios(rng, reference_flat, variation_scale)
+                b1, b2, b3 = self._sample_b_ratios(rng, seed_flat, variation_scale)
                 vector[index_map["b1_span_ratio"]] = b1
                 vector[index_map["b2_span_ratio"]] = b2
                 vector[index_map["b3_span_ratio"]] = b3
@@ -513,17 +513,17 @@ class DesignSpace:
             for name in self.active_variables:
                 if name in {"b1_span_ratio", "b2_span_ratio", "b3_span_ratio"}:
                     continue
-                lower, upper = self._local_bounds(name, reference_flat[name], variation_scale)
+                lower, upper = self._local_bounds(name, seed_flat[name], variation_scale)
                 vector[index_map[name]] = rng.uniform(lower, upper)
 
             sampled.append(SectionedBWBDesignVariables.from_vector(vector))
         return sampled
 
-    def _local_bounds(self, name: str, reference_value: float, variation_scale: float) -> Tuple[float, float]:
+    def _local_bounds(self, name: str, seed_value: float, variation_scale: float) -> Tuple[float, float]:
         global_lower, global_upper = self.bounds[name]
         span = global_upper - global_lower
-        local_lower = max(global_lower, reference_value - variation_scale * span)
-        local_upper = min(global_upper, reference_value + variation_scale * span)
+        local_lower = max(global_lower, seed_value - variation_scale * span)
+        local_upper = min(global_upper, seed_value + variation_scale * span)
         if local_upper <= local_lower:
             return global_lower, global_upper
         return float(local_lower), float(local_upper)
@@ -531,12 +531,12 @@ class DesignSpace:
     def _sample_b_ratios(
         self,
         rng: np.random.Generator,
-        reference_flat: Dict[str, float],
+        seed_flat: Dict[str, float],
         variation_scale: float,
     ) -> Tuple[float, float, float]:
         for _ in range(200):
-            b1_lower, b1_upper = self._local_bounds("b1_span_ratio", reference_flat["b1_span_ratio"], variation_scale)
-            b2_lower, b2_upper = self._local_bounds("b2_span_ratio", reference_flat["b2_span_ratio"], variation_scale)
+            b1_lower, b1_upper = self._local_bounds("b1_span_ratio", seed_flat["b1_span_ratio"], variation_scale)
+            b2_lower, b2_upper = self._local_bounds("b2_span_ratio", seed_flat["b2_span_ratio"], variation_scale)
             b1 = float(rng.uniform(b1_lower, b1_upper))
             b2 = float(rng.uniform(b2_lower, b2_upper))
             b3 = 1.0 - b1 - b2
@@ -544,15 +544,15 @@ class DesignSpace:
             if lower_b3 <= b3 <= upper_b3:
                 return b1, b2, float(b3)
         return (
-            float(reference_flat["b1_span_ratio"]),
-            float(reference_flat["b2_span_ratio"]),
-            float(reference_flat["b3_span_ratio"]),
+            float(seed_flat["b1_span_ratio"]),
+            float(seed_flat["b2_span_ratio"]),
+            float(seed_flat["b3_span_ratio"]),
         )
 
 
 def build_design_space(
     preset_name: str,
-    reference_design: Optional[SectionedBWBDesignVariables] = None,
+    seed_design: Optional[SectionedBWBDesignVariables] = None,
 ) -> DesignSpace:
     presets = preset_groups()
     if preset_name not in presets:
@@ -561,8 +561,8 @@ def build_design_space(
             % (preset_name, ", ".join(sorted(presets)))
         )
 
-    if reference_design is None:
-        reference_design = SectionedBWBDesignVariables.reference_seed()
+    if seed_design is None:
+        seed_design = SectionedBWBDesignVariables.reference_seed()
     groups = parameter_groups()
     active_groups = presets[preset_name]
     active_variables: List[str] = []
@@ -573,7 +573,7 @@ def build_design_space(
         preset_name=preset_name,
         active_groups=active_groups,
         active_variables=tuple(active_variables),
-        reference_design=reference_design,
+        seed_design=seed_design,
         bounds=SectionedBWBDesignVariables.default_bounds(),
     )
 
@@ -595,7 +595,7 @@ def group_for_parameter(parameter_name: str) -> str:
 
 def preset_parameter_metadata(
     preset_name: str,
-    reference_design: Optional[SectionedBWBDesignVariables] = None,
+    seed_design: Optional[SectionedBWBDesignVariables] = None,
 ) -> List[Dict[str, object]]:
-    design_space = build_design_space(preset_name, reference_design=reference_design)
+    design_space = build_design_space(preset_name, seed_design=seed_design)
     return design_space.active_metadata()
