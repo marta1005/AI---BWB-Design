@@ -51,7 +51,7 @@ CTA_INTERNAL_VOLUME_CONSTRAINTS_PATH = (
 )
 CTA_CAD_REFERENCE_FRAME = CadReferenceFrame(
     name="CTA CAD reference",
-    offset_x_m=0.077261,
+    offset_x_m=0.0,
     offset_y_m=0.0,
     offset_z_m=0.0,
     mirror_about_symmetry_plane=True,
@@ -524,6 +524,12 @@ CTA_ROOT_FRONT_SOLVE_TWIST_WINDOW_DEG = 6.0
 CTA_ROOT_FRONT_SOLVE_GRID_SIZE = 121
 CTA_ROOT_FRONT_SLOPE_H_M = 1.0e-5
 CTA_ROOT_TE_FLATTEN_X_START = 0.92
+CTA_LOWER_FRONT_CONSTRAINT_MARGIN_M = 0.06
+CTA_LOWER_FRONT_XC_SIGMA = 0.22
+CTA_LOWER_FRONT_SECTION2_TARGET_BLEND = 0.52
+CTA_LOWER_FRONT_SECTION1_REFERENCE_BLEND = 0.35
+CTA_UPPER_FRONT_XC_SIGMA = 0.24
+CTA_UPPER_FRONT_LE_XC_SIGMA = 0.10
 
 CTA_S_DEG = float(degrees(atan2(CTA_NOSE_HELPER_1_X_M - CTA_LE_ROOT_X_M, CTA_NOSE_HELPER_1_Y_M)))
 CTA_C1_SWEEP_DEG = float(
@@ -927,6 +933,398 @@ def _cta_glider_lower_envelope():
     y_sections = np.asarray(sorted(sections.keys()), dtype=float)
     lower = np.asarray([float(np.min(np.asarray(sections[yy], dtype=float)[:, 1])) for yy in y_sections], dtype=float)
     return y_sections, lower
+
+
+def _cta_lower_front_constraint_guided_profile_transform(
+    config: SectionedBWBModelConfig,
+):
+    constraint_set = _cta_internal_volume_constraint_set()
+    planform = build_sectioned_bwb_planform(config.topology, config.planform)
+    laws = resolve_spanwise_laws(config)
+    section_model = build_section_model(config, laws)
+    if config.spanwise.vertical_offset_callable is not None:
+        base_vertical = config.spanwise.vertical_offset_callable
+    elif config.spanwise.vertical_offset_z is not None:
+        interpolant = build_anchored_interpolant(config.topology, config.spanwise.vertical_offset_z)
+
+        def base_vertical(yy: float) -> float:
+            return float(interpolant(float(yy)))
+
+    else:
+        dihedral_tan = float(np.tan(np.deg2rad(config.spanwise.dihedral_deg)))
+        vertical_offset_m = float(config.spanwise.vertical_offset_m)
+
+        def base_vertical(yy: float) -> float:
+            return float(vertical_offset_m + dihedral_tan * float(yy))
+
+    max_target_y = float(config.topology.anchor_y_array[3])
+    x_air_native = np.asarray(section_model.x_air, dtype=float)
+    lower_surfaces = tuple(surface for surface in constraint_set.surfaces if surface.sense == "lower")
+
+    def lower_constraint_front_min(y_model: float) -> float:
+        y_cad = float(y_model) + float(CTA_CAD_REFERENCE_FRAME.offset_y_m)
+        z_candidates: list[float] = []
+        tol = 1.0e-12
+        for surface in lower_surfaces:
+            vertices = np.asarray(surface.vertices_xyz_m, dtype=float)
+            for idx in range(vertices.shape[0]):
+                p0 = vertices[idx]
+                p1 = vertices[(idx + 1) % vertices.shape[0]]
+                y0 = float(p0[1])
+                y1 = float(p1[1])
+                if abs(y1 - y0) <= tol:
+                    if abs(y_cad - y0) <= tol:
+                        z_candidates.extend((float(p0[2]), float(p1[2])))
+                    continue
+                if (y_cad - y0) * (y_cad - y1) > 0.0:
+                    continue
+                t_edge = (y_cad - y0) / (y1 - y0)
+                if -1.0e-10 <= t_edge <= 1.0 + 1.0e-10:
+                    z_candidates.append(float(p0[2] + t_edge * (p1[2] - p0[2])))
+        if not z_candidates:
+            return float("nan")
+        return float(np.min(np.asarray(z_candidates, dtype=float)))
+
+    def front_lower_min_and_xc(y_model: float) -> tuple[float, float]:
+        yy = float(y_model)
+        chord = float(planform.te_x(yy) - planform.le_x(yy))
+        twist_deg = float(laws.twist_deg(yy))
+        vertical = float(base_vertical(yy))
+        _, lower, _ = section_model.coordinates_at_y(yy)
+        x_local = x_air_native * chord
+        lower_local = np.asarray(lower, dtype=float) * chord
+        tr = np.deg2rad(twist_deg)
+        z_world = vertical + x_local * np.sin(tr) + lower_local * np.cos(tr)
+        min_idx = int(np.argmin(z_world))
+        return float(z_world[min_idx]), float(x_air_native[min_idx])
+
+    anchor_y = np.asarray(config.topology.anchor_y_array, dtype=float)
+    control_y = np.asarray(anchor_y[:5], dtype=float)
+    current_lower_control = np.zeros(control_y.size, dtype=float)
+    x_c_min_control = np.zeros(control_y.size, dtype=float)
+    for idx, yy in enumerate(control_y):
+        current_lower, x_c_min = front_lower_min_and_xc(float(yy))
+        current_lower_control[idx] = current_lower
+        x_c_min_control[idx] = x_c_min
+
+    glider_y_sections, glider_lower_sections = _cta_glider_lower_envelope()
+    target_lower_control = current_lower_control.copy()
+    section1_ref = float(np.interp(control_y[1], glider_y_sections, glider_lower_sections))
+    section2_ref = float(np.interp(control_y[2], glider_y_sections, glider_lower_sections))
+    target_lower_control[1] = float(
+        current_lower_control[1]
+        + CTA_LOWER_FRONT_SECTION1_REFERENCE_BLEND * (section1_ref - current_lower_control[1])
+    )
+    lower_required_section2 = lower_constraint_front_min(float(control_y[2]))
+    section2_target = float(
+        current_lower_control[1]
+        + CTA_LOWER_FRONT_SECTION2_TARGET_BLEND * (current_lower_control[3] - current_lower_control[1])
+    )
+    section2_target = float(0.75 * section2_target + 0.25 * section2_ref)
+    if np.isfinite(lower_required_section2):
+        section2_target = min(
+            section2_target,
+            float(lower_required_section2) - float(CTA_LOWER_FRONT_CONSTRAINT_MARGIN_M),
+        )
+    target_lower_control[2] = section2_target
+
+    helper_y = float(0.5 * (control_y[0] + control_y[1]))
+    helper_lower = float(0.5 * (target_lower_control[0] + target_lower_control[1]))
+    helper_x_c = float(0.5 * (x_c_min_control[0] + x_c_min_control[1]))
+    target_lower_y = np.asarray(
+        [control_y[0], helper_y, control_y[1], control_y[2], control_y[3], control_y[4]],
+        dtype=float,
+    )
+    target_lower_values = np.asarray(
+        [
+            target_lower_control[0],
+            helper_lower,
+            target_lower_control[1],
+            target_lower_control[2],
+            target_lower_control[3],
+            target_lower_control[4],
+        ],
+        dtype=float,
+    )
+    x_c_control_y = np.asarray(
+        [control_y[0], helper_y, control_y[1], control_y[2], control_y[3], control_y[4]],
+        dtype=float,
+    )
+    x_c_control_values = np.asarray(
+        [
+            x_c_min_control[0],
+            helper_x_c,
+            x_c_min_control[1],
+            x_c_min_control[2],
+            x_c_min_control[3],
+            x_c_min_control[4],
+        ],
+        dtype=float,
+    )
+
+    target_lower_fun = build_scalar_interpolant(target_lower_y, target_lower_values, "pchip")
+    x_c_min_fun = build_scalar_interpolant(x_c_control_y, x_c_control_values, "pchip")
+
+    def transform(
+        y: float,
+        x_air: np.ndarray,
+        upper: np.ndarray,
+        lower: np.ndarray,
+        _params,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        yy = float(y)
+        if yy < 0.0 or yy > max_target_y + 1.0e-12:
+            return upper, lower
+        chord = float(planform.te_x(yy) - planform.le_x(yy))
+        twist_deg = float(laws.twist_deg(yy))
+        vertical = float(base_vertical(yy))
+        tr = np.deg2rad(twist_deg)
+        cos_tr = float(np.cos(tr))
+        if abs(chord * cos_tr) <= 1.0e-12:
+            return upper, lower
+        x_air_arr = np.asarray(x_air, dtype=float)
+        lower_arr = np.asarray(lower, dtype=float)
+        x_local = x_air_arr * chord
+        lower_local = lower_arr * chord
+        z_world = vertical + x_local * np.sin(tr) + lower_local * cos_tr
+        current_lower = float(np.min(z_world))
+        target_lower = float(target_lower_fun(yy))
+        if abs(target_lower - current_lower) <= 1.0e-10:
+            return upper, lower
+        delta_local = float((target_lower - current_lower) / (chord * cos_tr))
+        x_c_center = float(np.clip(x_c_min_fun(yy), 0.0, 1.0))
+        sigma = float(max(CTA_LOWER_FRONT_XC_SIGMA, 1.0e-3))
+        weight = np.exp(-0.5 * ((x_air_arr - x_c_center) / sigma) ** 2)
+        lower_candidate = lower_arr + delta_local * weight
+        z_full = vertical + x_local * np.sin(tr) + lower_candidate * chord * cos_tr
+        if delta_local < 0.0:
+            if float(np.min(z_full)) >= target_lower - 1.0e-10:
+                return upper, lower_candidate
+
+            alpha_left = 0.0
+            alpha_right = 1.0
+            for _ in range(20):
+                alpha_mid = 0.5 * (alpha_left + alpha_right)
+                z_mid = vertical + x_local * np.sin(tr) + (lower_arr + alpha_mid * delta_local * weight) * chord * cos_tr
+                if float(np.min(z_mid)) > target_lower:
+                    alpha_left = alpha_mid
+                else:
+                    alpha_right = alpha_mid
+            alpha = float(alpha_right)
+            return upper, lower_arr + alpha * delta_local * weight
+
+        le_x = float(planform.le_x(yy))
+        x_lower_cad = (
+            le_x
+            + x_local * cos_tr
+            - lower_candidate * chord * np.sin(tr)
+            + float(CTA_CAD_REFERENCE_FRAME.offset_x_m)
+        )
+        y_cad_arr = np.full_like(x_local, yy + float(CTA_CAD_REFERENCE_FRAME.offset_y_m), dtype=float)
+        _, lower_required = required_constraint_bounds_at_points(lower_surfaces, x_lower_cad, y_cad_arr)
+        valid_lower = np.isfinite(lower_required)
+        if (not np.any(valid_lower)) or np.all(z_full[valid_lower] <= lower_required[valid_lower] + 1.0e-10):
+            return upper, lower_candidate
+
+        alpha_left = 0.0
+        alpha_right = 1.0
+        for _ in range(20):
+            alpha_mid = 0.5 * (alpha_left + alpha_right)
+            lower_mid = lower_arr + alpha_mid * delta_local * weight
+            z_mid = vertical + x_local * np.sin(tr) + lower_mid * chord * cos_tr
+            x_mid_cad = (
+                le_x
+                + x_local * cos_tr
+                - lower_mid * chord * np.sin(tr)
+                + float(CTA_CAD_REFERENCE_FRAME.offset_x_m)
+            )
+            _, lower_required_mid = required_constraint_bounds_at_points(lower_surfaces, x_mid_cad, y_cad_arr)
+            valid_mid = np.isfinite(lower_required_mid)
+            feasible = (not np.any(valid_mid)) or np.all(z_mid[valid_mid] <= lower_required_mid[valid_mid] + 1.0e-10)
+            if feasible:
+                alpha_left = alpha_mid
+            else:
+                alpha_right = alpha_mid
+        alpha = float(alpha_left)
+        return upper, lower_arr + alpha * delta_local * weight
+
+    return transform
+
+
+def _cta_upper_front_section3_guided_profile_transform(
+    config: SectionedBWBModelConfig,
+):
+    base_sections = replace(config.sections, profile_post_transform=None)
+    base_config = replace(config, sections=base_sections)
+    planform = build_sectioned_bwb_planform(base_config.topology, base_config.planform)
+    laws = resolve_spanwise_laws(base_config)
+    section_model = build_section_model(base_config, laws)
+    x_air_native = np.asarray(section_model.x_air, dtype=float)
+
+    if base_config.spanwise.vertical_offset_callable is not None:
+        base_vertical = base_config.spanwise.vertical_offset_callable
+    elif base_config.spanwise.vertical_offset_z is not None:
+        interpolant = build_anchored_interpolant(base_config.topology, base_config.spanwise.vertical_offset_z)
+
+        def base_vertical(yy: float) -> float:
+            return float(interpolant(float(yy)))
+
+    else:
+        dihedral_tan = float(np.tan(np.deg2rad(base_config.spanwise.dihedral_deg)))
+        vertical_offset_m = float(base_config.spanwise.vertical_offset_m)
+
+        def base_vertical(yy: float) -> float:
+            return float(vertical_offset_m + dihedral_tan * float(yy))
+
+    def front_upper_max_and_xc(y_model: float) -> tuple[float, float]:
+        yy = float(y_model)
+        chord = float(planform.te_x(yy) - planform.le_x(yy))
+        twist_deg = float(laws.twist_deg(yy))
+        vertical = float(base_vertical(yy))
+        upper, _, _ = section_model.coordinates_at_y(yy)
+        x_local = x_air_native * chord
+        upper_local = np.asarray(upper, dtype=float) * chord
+        tr = np.deg2rad(twist_deg)
+        z_world = vertical + x_local * np.sin(tr) + upper_local * np.cos(tr)
+        max_idx = int(np.argmax(z_world))
+        return float(z_world[max_idx]), float(x_air_native[max_idx])
+
+    anchor_y = np.asarray(base_config.topology.anchor_y_array, dtype=float)
+    control_y = np.asarray(anchor_y[1:5], dtype=float)
+    upper_control = np.zeros(control_y.size, dtype=float)
+    x_c_max_control = np.zeros(control_y.size, dtype=float)
+    for idx, yy in enumerate(control_y):
+        upper_here, x_c_here = front_upper_max_and_xc(float(yy))
+        upper_control[idx] = upper_here
+        x_c_max_control[idx] = x_c_here
+
+    target_upper_fun = build_scalar_interpolant(control_y, upper_control, "pchip")
+    x_c_max_fun = build_scalar_interpolant(control_y, x_c_max_control, "pchip")
+    y_start = float(control_y[0])
+    y_end = float(control_y[2])
+
+    def transform(
+        y: float,
+        x_air: np.ndarray,
+        upper: np.ndarray,
+        lower: np.ndarray,
+        _params,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        yy = float(y)
+        if yy < y_start - 1.0e-12 or yy > y_end + 1.0e-12:
+            return upper, lower
+        chord = float(planform.te_x(yy) - planform.le_x(yy))
+        twist_deg = float(laws.twist_deg(yy))
+        vertical = float(base_vertical(yy))
+        tr = np.deg2rad(twist_deg)
+        cos_tr = float(np.cos(tr))
+        if abs(chord * cos_tr) <= 1.0e-12:
+            return upper, lower
+        x_air_arr = np.asarray(x_air, dtype=float)
+        upper_arr = np.asarray(upper, dtype=float)
+        x_local = x_air_arr * chord
+        upper_local = upper_arr * chord
+        z_world = vertical + x_local * np.sin(tr) + upper_local * cos_tr
+        current_upper = float(np.max(z_world))
+        target_upper = float(target_upper_fun(yy))
+        if target_upper <= current_upper + 1.0e-10:
+            return upper, lower
+        delta_local = float((target_upper - current_upper) / (chord * cos_tr))
+        x_c_center = float(np.clip(x_c_max_fun(yy), 0.0, 1.0))
+        sigma = float(max(CTA_UPPER_FRONT_XC_SIGMA, 1.0e-3))
+        weight = np.exp(-0.5 * ((x_air_arr - x_c_center) / sigma) ** 2)
+        z_full = vertical + x_local * np.sin(tr) + (upper_arr + delta_local * weight) * chord * cos_tr
+        if float(np.max(z_full)) <= target_upper + 1.0e-10:
+            return upper_arr + delta_local * weight, lower
+
+        alpha_left = 0.0
+        alpha_right = 1.0
+        for _ in range(20):
+            alpha_mid = 0.5 * (alpha_left + alpha_right)
+            z_mid = vertical + x_local * np.sin(tr) + (upper_arr + alpha_mid * delta_local * weight) * chord * cos_tr
+            if float(np.max(z_mid)) < target_upper:
+                alpha_left = alpha_mid
+            else:
+                alpha_right = alpha_mid
+        alpha = float(alpha_right)
+        return upper_arr + alpha * delta_local * weight, lower
+
+    return transform
+
+
+def _cta_upper_front_le_guided_profile_transform(
+    config: SectionedBWBModelConfig,
+):
+    base_sections = replace(config.sections, profile_post_transform=None)
+    base_config = replace(config, sections=base_sections)
+    planform = build_sectioned_bwb_planform(base_config.topology, base_config.planform)
+    laws = resolve_spanwise_laws(base_config)
+    section_model = build_section_model(base_config, laws)
+    x_air_native = np.asarray(section_model.x_air, dtype=float)
+
+    if base_config.spanwise.vertical_offset_callable is not None:
+        base_vertical = base_config.spanwise.vertical_offset_callable
+    elif base_config.spanwise.vertical_offset_z is not None:
+        interpolant = build_anchored_interpolant(base_config.topology, base_config.spanwise.vertical_offset_z)
+
+        def base_vertical(yy: float) -> float:
+            return float(interpolant(float(yy)))
+
+    else:
+        dihedral_tan = float(np.tan(np.deg2rad(base_config.spanwise.dihedral_deg)))
+        vertical_offset_m = float(base_config.spanwise.vertical_offset_m)
+
+        def base_vertical(yy: float) -> float:
+            return float(vertical_offset_m + dihedral_tan * float(yy))
+
+    def front_upper_le(y_model: float) -> float:
+        yy = float(y_model)
+        chord = float(planform.te_x(yy) - planform.le_x(yy))
+        twist_deg = float(laws.twist_deg(yy))
+        vertical = float(base_vertical(yy))
+        upper, _, _ = section_model.coordinates_at_y(yy)
+        tr = np.deg2rad(twist_deg)
+        return float(vertical + np.asarray(upper, dtype=float)[0] * chord * np.cos(tr))
+
+    anchor_y = np.asarray(base_config.topology.anchor_y_array, dtype=float)
+    control_y = np.asarray(anchor_y[1:5], dtype=float)
+    z_le_control = np.asarray([front_upper_le(float(yy)) for yy in control_y], dtype=float)
+    z_le_target_fun = build_scalar_interpolant(control_y, z_le_control, "pchip")
+    y_start = float(control_y[0])
+    y_end = float(control_y[-1])
+
+    def transform(
+        y: float,
+        x_air: np.ndarray,
+        upper: np.ndarray,
+        lower: np.ndarray,
+        _params,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        yy = float(y)
+        if yy < y_start - 1.0e-12 or yy > y_end + 1.0e-12:
+            return upper, lower
+        chord = float(planform.te_x(yy) - planform.le_x(yy))
+        twist_deg = float(laws.twist_deg(yy))
+        vertical = float(base_vertical(yy))
+        tr = np.deg2rad(twist_deg)
+        cos_tr = float(np.cos(tr))
+        if abs(chord * cos_tr) <= 1.0e-12:
+            return upper, lower
+
+        x_air_arr = np.asarray(x_air, dtype=float)
+        upper_arr = np.asarray(upper, dtype=float)
+        current_le = float(vertical + upper_arr[0] * chord * cos_tr)
+        target_le = float(z_le_target_fun(yy))
+        if abs(target_le - current_le) <= 1.0e-10:
+            return upper, lower
+
+        delta_local = float((target_le - current_le) / (chord * cos_tr))
+        sigma = float(max(CTA_UPPER_FRONT_LE_XC_SIGMA, 1.0e-3))
+        weight = np.exp(-0.5 * (x_air_arr / sigma) ** 2)
+        upper_candidate = upper_arr + delta_local * weight
+        return upper_candidate, lower
+
+    return transform
 
 
 def _cta_internal_volume_profile_transform(
@@ -1658,6 +2056,11 @@ def to_cta_model_config(
     ) = _cta_root_front_matched_callables(config)
     config.sections = replace(
         config.sections,
-        profile_post_transform=None,
+        profile_post_transform=_compose_profile_post_transforms(
+            _cta_root_te_flatten_profile_transform(config),
+            _cta_lower_front_constraint_guided_profile_transform(config),
+            _cta_upper_front_section3_guided_profile_transform(config),
+            _cta_upper_front_le_guided_profile_transform(config),
+        ),
     )
     return config

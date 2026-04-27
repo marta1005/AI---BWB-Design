@@ -44,8 +44,13 @@ GIF_DPI = 170
 FRAME_COUNT = 51
 PLANFORM_SEED = 11
 AUX_RNG_SEED = 17
-GIF_UPPER_COLOR = "#cfdff8"
-GIF_LOWER_COLOR = "#dce8fb"
+GIF_UPPER_COLOR = "#1e3a8a"
+GIF_LOWER_COLOR = "#2563eb"
+GIF_CONTOUR_COLOR = "#0f172a"
+GIF_LEADING_EDGE_COLOR = "#0f172a"
+GIF_TRAILING_EDGE_COLOR = "#1d4ed8"
+GIF_TIP_COLOR = "#334155"
+GIF_ROOT_COLOR = "#64748b"
 FIG_BG = "white"
 TITLE_COLOR = "#0f172a"
 
@@ -248,6 +253,11 @@ def _render_frame(
         chord_dense,
         upper_color=GIF_UPPER_COLOR,
         lower_color=GIF_LOWER_COLOR,
+        contour_color=GIF_CONTOUR_COLOR,
+        leading_edge_color=GIF_LEADING_EDGE_COLOR,
+        trailing_edge_color=GIF_TRAILING_EDGE_COLOR,
+        tip_color=GIF_TIP_COLOR,
+        root_color=GIF_ROOT_COLOR,
     )
     ax.set_xlim(*x_limits)
     ax.set_ylim(*y_limits)

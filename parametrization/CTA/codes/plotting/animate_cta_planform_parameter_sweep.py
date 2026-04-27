@@ -226,6 +226,7 @@ def _render_frame(
         half_wing=True,
         label_zones=True,
         faded_symmetry=True,
+        palette="dark_blue",
     )
 
     ax.plot(ref_le, ref_dense_span, color="#475569", linewidth=1.5, linestyle="--", alpha=0.85, zorder=6)
@@ -288,7 +289,14 @@ def main() -> None:
         for idx, sample in enumerate(samples):
             frame_path = tmp_dir_path / f"frame_{idx:03d}.png"
             _render_frame(sample, cta_curves, idx, len(samples), frame_path)
-            images.append(Image.open(frame_path).convert("P", palette=Image.Palette.ADAPTIVE))
+            images.append(
+                Image.open(frame_path).convert(
+                    "P",
+                    palette=Image.Palette.ADAPTIVE,
+                    colors=255,
+                    dither=Image.Dither.NONE,
+                )
+            )
             durations.append(260)
         if durations:
             durations[0] = 700

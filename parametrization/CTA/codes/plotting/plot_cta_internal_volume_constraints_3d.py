@@ -25,6 +25,19 @@ from parametrization.bwb.builder import prepare_geometry
 
 OUTPUT_PNG = CTA_DIR / "outputs" / "wing" / "cta_internal_volume_constraints_3d.png"
 
+SURFACE_PALETTE = (
+    "#2563eb",
+    "#dc2626",
+    "#059669",
+    "#d97706",
+    "#7c3aed",
+    "#0891b2",
+    "#ea580c",
+    "#65a30d",
+    "#db2777",
+    "#4f46e5",
+)
+
 
 def _build_wing_surface_arrays(prepared, frame, dense_span: np.ndarray) -> tuple[np.ndarray, ...]:
     x_air = np.asarray(prepared.section_model.x_air, dtype=float)
@@ -86,6 +99,13 @@ def _mirrored_triangles(triangles: list[np.ndarray]) -> list[np.ndarray]:
     return mirrored
 
 
+def _surface_color_map(constraint_set):
+    return {
+        surface.label: SURFACE_PALETTE[idx % len(SURFACE_PALETTE)]
+        for idx, surface in enumerate(constraint_set.surfaces)
+    }
+
+
 def main() -> None:
     OUTPUT_PNG.parent.mkdir(parents=True, exist_ok=True)
 
@@ -95,6 +115,7 @@ def main() -> None:
     constraint_set = load_cta_internal_volume_constraint_set()
     constraint_result = evaluate_cta_internal_volume_constraints(prepared=prepared, triangle_resolution=10)
     result_by_label = {item.label: item for item in constraint_result.surface_results}
+    color_map = _surface_color_map(constraint_set)
 
     dense_span = np.unique(
         np.concatenate(
@@ -126,15 +147,9 @@ def main() -> None:
     ax.plot_surface(xu, -yu, zu, color="#d6e6fb", **wing_kw)
     ax.plot_surface(xl, -yl, zl, color="#dceaf9", **wing_kw)
 
-    category_face = {
-        "Payload": "#60a5fa",
-        "LandingGear": "#f59e0b",
-    }
-
     for surface in constraint_set.surfaces:
-        result = result_by_label[surface.label]
-        face_color = category_face.get(surface.category, "#94a3b8")
-        edge_color = "#15803d" if result.satisfied else "#b91c1c"
+        face_color = color_map[surface.label]
+        edge_color = color_map[surface.label]
         triangles = _surface_triangles(surface.vertices_xyz_m)
         all_triangles = triangles + _mirrored_triangles(triangles)
         poly = Poly3DCollection(
@@ -160,12 +175,16 @@ def main() -> None:
         )
 
     legend_items = [
-        Line2D([0], [0], color="#60a5fa", lw=8, alpha=0.8, label="Payload surfaces"),
-        Line2D([0], [0], color="#f59e0b", lw=8, alpha=0.8, label="Landing gear surfaces"),
-        Line2D([0], [0], color="#15803d", lw=2, label="Constraint satisfied"),
-        Line2D([0], [0], color="#b91c1c", lw=2, label="Constraint violated"),
+        Line2D(
+            [0],
+            [0],
+            color=color_map[surface.label],
+            lw=4,
+            label=surface.sub_category.replace("_", " "),
+        )
+        for surface in constraint_set.surfaces
     ]
-    ax.legend(handles=legend_items, loc="upper left", bbox_to_anchor=(0.01, 0.98), frameon=False)
+    ax.legend(handles=legend_items, loc="upper left", bbox_to_anchor=(0.01, 0.98), frameon=False, ncol=2)
 
     summary_text = (
         f"CAD frame offsets: X={CTA_CAD_REFERENCE_FRAME.offset_x_m:.6f} m, "

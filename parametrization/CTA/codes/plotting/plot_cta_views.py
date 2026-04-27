@@ -361,12 +361,31 @@ def draw_planform(
     half_wing: bool = False,
     label_zones: bool = False,
     faded_symmetry: bool = False,
+    palette: str = "default",
 ):
-    zone_defs = (
-        ("Center body", float(y_sections[0]), float(y_sections[1]), "#fde68a"),
-        ("Transition wing", float(y_sections[1]), float(y_sections[2]), "#bfdbfe"),
-        ("Outer wing", float(y_sections[2]), float(y_sections[3]), "#bbf7d0"),
-    )
+    if palette == "dark_blue":
+        zone_defs = (
+            ("Center body", float(y_sections[0]), float(y_sections[1]), "#1e3a8a"),
+            ("Transition wing", float(y_sections[1]), float(y_sections[2]), "#1d4ed8"),
+            ("Outer wing", float(y_sections[2]), float(y_sections[3]), "#2563eb"),
+        )
+        zone_alpha = 0.22
+        mirror_alpha = 0.08 if faded_symmetry else 0.12
+        leading_color = "#0f172a"
+        trailing_color = "#1d4ed8"
+        label_edge = "#93c5fd"
+    else:
+        zone_defs = (
+            ("Center body", float(y_sections[0]), float(y_sections[1]), "#fde68a"),
+            ("Transition wing", float(y_sections[1]), float(y_sections[2]), "#bfdbfe"),
+            ("Outer wing", float(y_sections[2]), float(y_sections[3]), "#bbf7d0"),
+        )
+        zone_alpha = 0.55
+        mirror_alpha = 0.12 if faded_symmetry else 0.20
+        leading_color = "#0f4c5c"
+        trailing_color = "#c44536"
+        label_edge = "#cbd5e1"
+
     for zone_name, y0, y1, zone_color in zone_defs:
         mask = (dense_span >= y0) & (dense_span <= y1)
         ax.fill_betweenx(
@@ -374,7 +393,7 @@ def draw_planform(
             leading_edge_x[mask],
             trailing_edge_x[mask],
             color=zone_color,
-            alpha=0.55,
+            alpha=zone_alpha,
             zorder=1,
             label=zone_name,
         )
@@ -384,7 +403,7 @@ def draw_planform(
                 leading_edge_x[mask],
                 trailing_edge_x[mask],
                 color=zone_color,
-                alpha=0.12 if faded_symmetry else 0.20,
+                alpha=mirror_alpha,
                 zorder=1,
             )
         if label_zones:
@@ -401,7 +420,7 @@ def draw_planform(
                 color="#0f172a",
                 ha="center",
                 va="center",
-                bbox={"boxstyle": "round,pad=0.22", "facecolor": "white", "edgecolor": "#cbd5e1", "alpha": 0.92},
+                bbox={"boxstyle": "round,pad=0.22", "facecolor": "white", "edgecolor": label_edge, "alpha": 0.92},
                 zorder=7,
             )
 
@@ -410,11 +429,11 @@ def draw_planform(
         "solid_capstyle": "round",
         "antialiased": True,
     }
-    ax.plot(leading_edge_x, dense_span, color="#0f4c5c", linewidth=2.2, zorder=3, **line_kwargs)
-    ax.plot(trailing_edge_x, dense_span, color="#c44536", linewidth=2.2, zorder=3, **line_kwargs)
+    ax.plot(leading_edge_x, dense_span, color=leading_color, linewidth=2.2, zorder=3, **line_kwargs)
+    ax.plot(trailing_edge_x, dense_span, color=trailing_color, linewidth=2.2, zorder=3, **line_kwargs)
     if not half_wing or faded_symmetry:
-        ax.plot(leading_edge_x, -dense_span, color="#0f4c5c", linewidth=2.2, zorder=3, **line_kwargs)
-        ax.plot(trailing_edge_x, -dense_span, color="#c44536", linewidth=2.2, zorder=3, **line_kwargs)
+        ax.plot(leading_edge_x, -dense_span, color=leading_color, linewidth=2.2, zorder=3, **line_kwargs)
+        ax.plot(trailing_edge_x, -dense_span, color=trailing_color, linewidth=2.2, zorder=3, **line_kwargs)
 
     # Highlight the transition region with a soft overlay so the smooth pySpline
     # evolution is visually clearer and does not look like a sharp peak.
@@ -424,18 +443,18 @@ def draw_planform(
     ax.plot(
         leading_edge_x[transition_mask],
         dense_span[transition_mask],
-        color="#0f4c5c",
+        color=leading_color,
         linewidth=5.6,
-        alpha=0.16,
+        alpha=0.16 if palette == "default" else 0.22,
         zorder=2,
         **line_kwargs,
     )
     ax.plot(
         trailing_edge_x[transition_mask],
         dense_span[transition_mask],
-        color="#c44536",
+        color=trailing_color,
         linewidth=5.6,
-        alpha=0.16,
+        alpha=0.16 if palette == "default" else 0.22,
         zorder=2,
         **line_kwargs,
     )
@@ -443,18 +462,18 @@ def draw_planform(
         ax.plot(
             leading_edge_x[transition_mask],
             -dense_span[transition_mask],
-            color="#0f4c5c",
+            color=leading_color,
             linewidth=5.6,
-            alpha=0.09 if faded_symmetry else 0.16,
+            alpha=0.09 if palette == "default" and faded_symmetry else (0.12 if faded_symmetry else 0.22),
             zorder=2,
             **line_kwargs,
         )
         ax.plot(
             trailing_edge_x[transition_mask],
             -dense_span[transition_mask],
-            color="#c44536",
+            color=trailing_color,
             linewidth=5.6,
-            alpha=0.09 if faded_symmetry else 0.16,
+            alpha=0.09 if palette == "default" and faded_symmetry else (0.12 if faded_symmetry else 0.22),
             zorder=2,
             **line_kwargs,
         )
@@ -1361,6 +1380,11 @@ def draw_3d(
     show_contours: bool = True,
     show_le_te: bool = True,
     show_tip_root: bool = True,
+    contour_color: str = "#1d4ed8",
+    leading_edge_color: str = "#0f766e",
+    trailing_edge_color: str = "#b45309",
+    tip_color: str = "#475569",
+    root_color: str = "#94a3b8",
 ):
     x_air = prepared.section_model.x_air
     ns = dense_span.size
@@ -1437,10 +1461,10 @@ def draw_3d(
     ax.plot_surface(xu_s, -yu_s, zu_s, color=upper_color, alpha=1.0, **surf_kw_mirror)
     ax.plot_surface(xl_s, -yl_s, zl_s, color=lower_color, alpha=1.0, **surf_kw_mirror)
 
-    contour_kw = {"color": "#1d4ed8", "linewidth": 1.15, "alpha": 0.95}
-    le_kw = {"color": "#0f766e", "linewidth": 1.65, "alpha": 0.98}
-    te_kw = {"color": "#b45309", "linewidth": 1.55, "alpha": 0.96}
-    tip_kw = {"color": "#475569", "linewidth": 1.05, "alpha": 0.82}
+    contour_kw = {"color": contour_color, "linewidth": 1.15, "alpha": 0.95}
+    le_kw = {"color": leading_edge_color, "linewidth": 1.65, "alpha": 0.98}
+    te_kw = {"color": trailing_edge_color, "linewidth": 1.55, "alpha": 0.96}
+    tip_kw = {"color": tip_color, "linewidth": 1.05, "alpha": 0.82}
 
     if show_contours:
         for sign in (1.0, -1.0):
@@ -1473,7 +1497,7 @@ def draw_3d(
         root_x = np.concatenate([xu[0, :], xl[0, ::-1], xu[0, :1]])
         root_y = np.concatenate([yu[0, :], yl[0, ::-1], yu[0, :1]])
         root_z = np.concatenate([zu[0, :], zl[0, ::-1], zu[0, :1]])
-        ax.plot(root_x, root_y, root_z, color="#94a3b8", linewidth=0.95, alpha=0.70)
+        ax.plot(root_x, root_y, root_z, color=root_color, linewidth=0.95, alpha=0.70)
 
     ax.set_xlabel("x [m]", labelpad=6.0)
     ax.set_ylabel("spanwise y [m]", labelpad=6.0)

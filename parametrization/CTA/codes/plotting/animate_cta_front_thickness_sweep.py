@@ -74,6 +74,11 @@ STATION_COLORS: Dict[str, str] = {
     "C5": "#15803d",
 }
 
+GIF_ZONE_COLORS: Tuple[str, str, str] = ("#1e3a8a", "#1d4ed8", "#2563eb")
+GIF_FILL_COLOR = "#2563eb"
+GIF_LINE_COLOR = "#0f172a"
+GIF_REF_COLOR = "#64748b"
+
 
 def _dense_span(config, n_points: int = DENSE_SPAN_POINTS) -> np.ndarray:
     y_sections = np.asarray(config.topology.y_sections_array, dtype=float)
@@ -430,17 +435,17 @@ def _render_frame(
     ax_info = fig.add_subplot(gs[0, 1])
 
     for x0, x1, color in (
-        (0.0, b1, "#fde68a"),
-        (b1, b2_end, "#bfdbfe"),
-        (b2_end, span, "#bbf7d0"),
+        (0.0, b1, GIF_ZONE_COLORS[0]),
+        (b1, b2_end, GIF_ZONE_COLORS[1]),
+        (b2_end, span, GIF_ZONE_COLORS[2]),
     ):
-        ax.axvspan(x0, x1, color=color, alpha=0.15, zorder=0)
+        ax.axvspan(x0, x1, color=color, alpha=0.10, zorder=0)
 
-    ax.fill_between(dense_span, lower, upper, color="#dce7f1", zorder=1, alpha=0.90)
-    ax.plot(dense_span, upper, color="#0f4c5c", linewidth=2.25, zorder=3)
-    ax.plot(dense_span, lower, color="#0f4c5c", linewidth=2.25, zorder=3)
-    ax.plot(ref_span, ref_upper, color="#64748b", linewidth=1.35, linestyle="--", zorder=4, alpha=0.95)
-    ax.plot(ref_span, ref_lower, color="#64748b", linewidth=1.35, linestyle="--", zorder=4, alpha=0.95)
+    ax.fill_between(dense_span, lower, upper, color=GIF_FILL_COLOR, zorder=1, alpha=0.18)
+    ax.plot(dense_span, upper, color=GIF_LINE_COLOR, linewidth=2.25, zorder=3)
+    ax.plot(dense_span, lower, color=GIF_LINE_COLOR, linewidth=2.25, zorder=3)
+    ax.plot(ref_span, ref_upper, color=GIF_REF_COLOR, linewidth=1.35, linestyle="--", zorder=4, alpha=0.95)
+    ax.plot(ref_span, ref_lower, color=GIF_REF_COLOR, linewidth=1.35, linestyle="--", zorder=4, alpha=0.95)
 
     for x_value in np.asarray(config.topology.anchor_y_array, dtype=float):
         ax.axvline(float(x_value), color="#64748b", linewidth=0.85, linestyle=(0, (4, 4)), alpha=0.45, zorder=2)
@@ -551,7 +556,14 @@ def main() -> None:
                 frame_path,
             )
             with Image.open(frame_path) as image:
-                images.append(image.convert("P", palette=Image.Palette.ADAPTIVE))
+                images.append(
+                    image.convert(
+                        "P",
+                        palette=Image.Palette.ADAPTIVE,
+                        colors=255,
+                        dither=Image.Dither.NONE,
+                    )
+                )
             durations.append(230)
 
         if durations:

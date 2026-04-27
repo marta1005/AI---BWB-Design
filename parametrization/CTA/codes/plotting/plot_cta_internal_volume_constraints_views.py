@@ -17,6 +17,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
+from scipy.signal import savgol_filter
 
 from parametrization.CTA.case import build_cta_design, to_cta_model_config
 from parametrization.CTA.internal_volume_constraints import (
@@ -28,6 +29,19 @@ from parametrization.bwb.builder import prepare_geometry
 
 
 OUTPUT_PNG = CTA_DIR / "outputs" / "wing" / "cta_internal_volume_constraints_views.png"
+
+SURFACE_PALETTE = (
+    "#2563eb",
+    "#dc2626",
+    "#059669",
+    "#d97706",
+    "#7c3aed",
+    "#0891b2",
+    "#ea580c",
+    "#65a30d",
+    "#db2777",
+    "#4f46e5",
+)
 
 
 def _sorted_unique_curve(x_coords: np.ndarray, z_coords: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
@@ -92,19 +106,53 @@ def _side_envelope(prepared, dense_span: np.ndarray, x_grid: np.ndarray) -> tupl
     lower_stack = np.vstack(lower_curves)
     upper_env = np.nanmax(upper_stack, axis=0)
     lower_env = np.nanmin(lower_stack, axis=0)
-    return upper_env, lower_env
+    return _smooth_side_envelope(upper_env), _smooth_side_envelope(lower_env)
 
 
-def _surface_style(surface, result):
-    face = "#93c5fd" if surface.category == "Payload" else "#fcd34d"
-    edge = "#15803d" if result.satisfied else "#b91c1c"
-    alpha = 0.58 if surface.category == "Payload" else 0.50
-    return face, edge, alpha
+def _smooth_side_envelope(z_curve: np.ndarray) -> np.ndarray:
+    z_values = np.asarray(z_curve, dtype=float).copy()
+    valid = np.isfinite(z_values)
+    valid_idx = np.flatnonzero(valid)
+    if valid_idx.size < 9:
+        return z_values
+
+    start = int(valid_idx[0])
+    stop = int(valid_idx[-1]) + 1
+    segment = z_values[start:stop]
+    if segment.size < 9:
+        return z_values
+
+    window = min(81, segment.size if segment.size % 2 == 1 else segment.size - 1)
+    if window < 9:
+        return z_values
+
+    smooth = savgol_filter(segment, window_length=window, polyorder=3, mode="interp")
+    blend = np.ones_like(segment, dtype=float)
+    edge = min(20, max(3, segment.size // 10))
+    if edge > 0:
+        ramp = np.linspace(0.0, 1.0, edge, dtype=float)
+        blend[:edge] = ramp
+        blend[-edge:] = ramp[::-1]
+    z_values[start:stop] = (1.0 - blend) * segment + blend * smooth
+    return z_values
 
 
-def _add_surface_projection_plan(ax, surface, result):
+def _surface_color_map(constraint_set):
+    return {
+        surface.label: SURFACE_PALETTE[idx % len(SURFACE_PALETTE)]
+        for idx, surface in enumerate(constraint_set.surfaces)
+    }
+
+
+def _surface_style(surface, color_map):
+    color = color_map[surface.label]
+    alpha = 0.34
+    return color, color, alpha
+
+
+def _add_surface_projection_plan(ax, surface, color_map):
     xy = np.asarray(surface.vertices_xyz_m[:, :2], dtype=float)
-    face, edge, alpha = _surface_style(surface, result)
+    face, edge, alpha = _surface_style(surface, color_map)
     ax.fill(xy[:, 0], xy[:, 1], facecolor=face, edgecolor=edge, linewidth=1.2, alpha=alpha, zorder=6)
     if np.max(np.abs(xy[:, 1])) > 1.0e-9:
         xy_m = xy.copy()
@@ -112,9 +160,9 @@ def _add_surface_projection_plan(ax, surface, result):
         ax.fill(xy_m[:, 0], xy_m[:, 1], facecolor=face, edgecolor=edge, linewidth=1.2, alpha=alpha, zorder=6)
 
 
-def _add_surface_projection_front(ax, surface, result):
+def _add_surface_projection_front(ax, surface, color_map):
     yz = np.asarray(surface.vertices_xyz_m[:, 1:3], dtype=float)
-    face, edge, alpha = _surface_style(surface, result)
+    face, edge, alpha = _surface_style(surface, color_map)
     ax.fill(yz[:, 0], yz[:, 1], facecolor=face, edgecolor=edge, linewidth=1.2, alpha=alpha, zorder=6)
     if np.max(np.abs(yz[:, 0])) > 1.0e-9:
         yz_m = yz.copy()
@@ -122,9 +170,9 @@ def _add_surface_projection_front(ax, surface, result):
         ax.fill(yz_m[:, 0], yz_m[:, 1], facecolor=face, edgecolor=edge, linewidth=1.2, alpha=alpha, zorder=6)
 
 
-def _add_surface_projection_side(ax, surface, result):
+def _add_surface_projection_side(ax, surface, color_map):
     xz = np.asarray(surface.vertices_xyz_m[:, (0, 2)], dtype=float)
-    face, edge, alpha = _surface_style(surface, result)
+    face, edge, alpha = _surface_style(surface, color_map)
     ax.fill(xz[:, 0], xz[:, 1], facecolor=face, edgecolor=edge, linewidth=1.2, alpha=alpha, zorder=6)
 
 
@@ -137,6 +185,7 @@ def main() -> None:
     constraint_set = load_cta_internal_volume_constraint_set()
     constraint_result = evaluate_cta_internal_volume_constraints(prepared=prepared, triangle_resolution=10)
     result_by_label = {item.label: item for item in constraint_result.surface_results}
+    color_map = _surface_color_map(constraint_set)
 
     dense_span = np.unique(
         np.concatenate(
@@ -192,17 +241,16 @@ def main() -> None:
 
     for surface in constraint_set.surfaces:
         result = result_by_label[surface.label]
-        _add_surface_projection_plan(ax_plan, surface, result)
-        _add_surface_projection_front(ax_front, surface, result)
-        _add_surface_projection_side(ax_side, surface, result)
+        _add_surface_projection_plan(ax_plan, surface, color_map)
+        _add_surface_projection_front(ax_front, surface, color_map)
+        _add_surface_projection_side(ax_side, surface, color_map)
 
     top_view_legend_lines = []
     top_view_callouts = []
     for idx, surface in enumerate(constraint_set.surfaces, start=1):
         centroid = np.mean(surface.vertices_xyz_m, axis=0)
         label = surface.sub_category.replace("_", " ")
-        result = result_by_label[surface.label]
-        text_color = "#15803d" if result.satisfied else "#b91c1c"
+        text_color = color_map[surface.label]
         top_view_legend_lines.append((idx, label, text_color))
         top_view_callouts.append(
             {
@@ -318,10 +366,14 @@ def main() -> None:
     )
 
     legend_items = [
-        Line2D([0], [0], color="#93c5fd", lw=8, alpha=0.9, label="Payload surfaces"),
-        Line2D([0], [0], color="#fcd34d", lw=8, alpha=0.9, label="Landing gear surfaces"),
-        Line2D([0], [0], color="#15803d", lw=2, label="Constraint satisfied"),
-        Line2D([0], [0], color="#b91c1c", lw=2, label="Constraint violated"),
+        Line2D(
+            [0],
+            [0],
+            color=color_map[surface.label],
+            lw=4,
+            label=surface.sub_category.replace("_", " "),
+        )
+        for surface in constraint_set.surfaces
     ]
 
     summary_text = (
@@ -337,11 +389,11 @@ def main() -> None:
     fig.legend(
         handles=legend_items,
         loc="upper center",
-        ncol=4,
+        ncol=5,
         frameon=True,
         bbox_to_anchor=(0.5, 0.905),
         borderpad=0.6,
-        columnspacing=1.8,
+        columnspacing=1.4,
         handlelength=2.6,
         facecolor="white",
         edgecolor="#cbd5e1",

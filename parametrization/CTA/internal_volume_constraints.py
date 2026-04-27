@@ -22,12 +22,10 @@ CTA_INTERNAL_VOLUME_CONSTRAINTS_PATH = (
 )
 
 # CAD / .geo frame offset relative to the internal CTA model frame.
-# Current alignment assumes:
-# - X offset taken from the previously aligned .geo root LE reference
-# - Y and Z already aligned
+# Current working alignment keeps the CAD and CTA model X origins coincident.
 CTA_CAD_REFERENCE_FRAME = CadReferenceFrame(
     name="CTA CAD reference",
-    offset_x_m=0.077261,
+    offset_x_m=0.0,
     offset_y_m=0.0,
     offset_z_m=0.0,
     mirror_about_symmetry_plane=True,
