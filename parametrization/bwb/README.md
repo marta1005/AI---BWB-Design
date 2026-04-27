@@ -265,6 +265,12 @@ This declares spanwise laws for:
 
 In most case layers these are built from `AnchoredSpanwiseLaw`.
 
+If a case needs a custom interpolation law, `AnchoredSpanwiseLaw` can now
+carry an `interpolation_factory`. That factory receives the anchor `y`
+positions and anchor values and must return a callable `f(y) -> value`.
+This lets a case keep a readable law name in `interpolation` while still
+plugging in a custom implementation.
+
 ## `SamplingSpec`
 
 Defined in [specs.py](/Users/martaarnabatmartin/Desktop/BWB/parametrization/bwb/specs.py).
@@ -277,8 +283,13 @@ Important fields:
 - `num_base_stations`
 - `section_curve_n_ctl`
 - `section_interpolation`
+- `section_interpolation_factory`
 - `airfoil_distribution_mode`
 - `k_span`
+
+`section_interpolation_factory` works the same way as the anchored-law
+factory, but for the section-to-section interpolation used by the section
+model.
 
 ## `SectionedBWBModelConfig`
 

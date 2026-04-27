@@ -63,9 +63,59 @@
     "c4_lower_cst_4",
     "c4_lower_cst_5"
   ],
+  "thickness_constraints": [
+    {
+      "parameter": "RThickness_CentreBody",
+      "station": "C0",
+      "display_name": "Relative thickness centre body",
+      "symbol": "RThickness_C0",
+      "units": "-",
+      "normalization": "t/c",
+      "reference": 0.141,
+      "lower_bound": 0.12,
+      "upper_bound": 0.18,
+      "description": "Thickness/chord ratio at the centre body root chord."
+    },
+    {
+      "parameter": "RThickness_MidWing",
+      "station": "C3",
+      "display_name": "Relative thickness mid wing",
+      "symbol": "RThickness_C3",
+      "units": "-",
+      "normalization": "t/c",
+      "reference": 0.164,
+      "lower_bound": 0.14,
+      "upper_bound": 0.2,
+      "description": "Thickness/chord ratio at the mid wing root chord."
+    },
+    {
+      "parameter": "RThickness_OutWing",
+      "station": "C4",
+      "display_name": "Relative thickness outer wing",
+      "symbol": "RThickness_C4",
+      "units": "-",
+      "normalization": "t/c",
+      "reference": 0.1027,
+      "lower_bound": 0.08,
+      "upper_bound": 0.16,
+      "description": "Thickness/chord ratio at the outer wing root chord."
+    },
+    {
+      "parameter": "RThickness_OutWing_Tip",
+      "station": "C5",
+      "display_name": "Relative thickness outer wing tip",
+      "symbol": "RThickness_C5",
+      "units": "-",
+      "normalization": "t/c",
+      "reference": 0.095,
+      "lower_bound": 0.08,
+      "upper_bound": 0.13,
+      "description": "Thickness/chord ratio at the outer wing tip chord."
+    }
+  ],
   "fixed_parameters": {
-    "s_deg": 45.07529007428979,
-    "c1_sweep_deg": 64.85000000000001,
+    "s_deg": 45.07529007428978,
+    "c1_sweep_deg": 64.85000000000002,
     "s_internal_deg": 63.006748952744395,
     "b1_fixed_m": 8.041,
     "c0_body_chord_m": 41.17952274,
@@ -84,7 +134,7 @@
       "S2": "s3_deg"
     },
     "legacy_cta_view": {
-      "S(legacy S1)": 45.07529007428979,
+      "S(legacy S1)": 45.07529007428978,
       "S1(50%-chord)": 34.60000000000001,
       "S2(25%-chord)": 24.7
     },
@@ -105,7 +155,7 @@
     "b1_span_ratio": 0.20357219711641922,
     "b2_span_ratio": 0.1419998,
     "b3_span_ratio": 0.6833352141596728,
-    "le_root_x": 0.0,
+    "le_root_x": 3.513099,
     "c1_root_chord": 41.17952274,
     "c2_c1_ratio": 13.9269627,
     "c3_c1_ratio": 7.768459794060001,
@@ -193,7 +243,7 @@
     "b1_span_ratio": 0.20357219711641922,
     "b2_span_ratio": 0.11309258872390791,
     "b3_span_ratio": 0.6833352141596728,
-    "le_root_x": 0.0,
+    "le_root_x": 3.513099,
     "c1_root_chord": 41.17952274,
     "c2_c1_ratio": 0.338201168282894,
     "c3_c1_ratio": 0.18864861166819827,

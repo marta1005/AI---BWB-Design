@@ -12,3 +12,7 @@ __pycache__/
 .ruff_cache/
 .idea/
 .vscode/
+.pydeps/
+tmp_all/
+tmp_anchors/
+project/

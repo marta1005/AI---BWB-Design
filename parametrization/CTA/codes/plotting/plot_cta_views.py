@@ -27,6 +27,7 @@ from parametrization.CTA.case import (
     to_cta_model_config,
 )
 from parametrization.shared.airfoil_fit import load_xyz_sections_by_span
+from parametrization.shared.cst import cosine_spacing
 from parametrization.CTA.design_space import build_cta_design_space
 from parametrization.bwb.builder import prepare_geometry
 
@@ -41,6 +42,12 @@ def save_figure(fig, path: Path, **kwargs) -> None:
             tmp_path = Path(tmp_dir) / path.name
             fig.savefig(tmp_path, **kwargs)
             shutil.copy2(tmp_path, path)
+
+
+def _dense_root_span(config) -> np.ndarray:
+    if float(config.planform.symmetry_blend_y) <= 1.0e-12:
+        return np.array([], dtype=float)
+    return float(config.planform.symmetry_blend_y) * cosine_spacing(240)
 
 
 def glider_z_limits(padding: float = 0.12):
@@ -166,9 +173,8 @@ def front_anchor_sections(prepared, anchor_y: np.ndarray):
 
 
 def front_linear_envelope(prepared, dense_y: np.ndarray, anchor_y: np.ndarray):
+    upper_dense, lower_dense, _ = front_anchor_sections(prepared, dense_y)
     upper_anchor, lower_anchor, _ = front_anchor_sections(prepared, anchor_y)
-    upper_dense = blend_linear_sections(dense_y, anchor_y, upper_anchor)
-    lower_dense = blend_linear_sections(dense_y, anchor_y, lower_anchor)
     return upper_dense, lower_dense, upper_anchor, lower_anchor
 
 
@@ -202,11 +208,7 @@ def front_edge_traces(prepared, spanwise_y: np.ndarray):
 
 
 def front_linear_edge_traces(prepared, dense_y: np.ndarray, anchor_y: np.ndarray):
-    z_le_anchor, z_te_upper_anchor, z_te_lower_anchor, z_te_mid_anchor = front_edge_traces(prepared, anchor_y)
-    z_le = blend_linear_sections(dense_y, anchor_y, z_le_anchor)
-    z_te_upper = blend_linear_sections(dense_y, anchor_y, z_te_upper_anchor)
-    z_te_lower = blend_linear_sections(dense_y, anchor_y, z_te_lower_anchor)
-    z_te_mid = blend_linear_sections(dense_y, anchor_y, z_te_mid_anchor)
+    z_le, z_te_upper, z_te_lower, z_te_mid = front_edge_traces(prepared, dense_y)
     return z_le, z_te_upper, z_te_lower, z_te_mid
 
 
@@ -252,8 +254,6 @@ def blend_linear_sections(
             left_line = v_here + left_slope * (local_y - y_here)
             right_line = v_here + right_slope * (local_y - y_here)
             t = (local_y - y_left) / max(y_right - y_left, 1e-12)
-            # Quintic smoothstep: value, slope, and curvature match the linear
-            # segments at both ends, giving a short local C2 blend.
             w = t * t * t * (10.0 + t * (-15.0 + 6.0 * t))
             blended[blend_mask] = (1.0 - w) * left_line + w * right_line
 
@@ -267,10 +267,6 @@ def blend_linear_sections(
         if np.any(root_mask):
             y_local = dense_y[root_mask]
             t = np.clip(y_local / root_blend_y, 0.0, 1.0)
-            # Quintic Hermite segment:
-            # f(0)=root_value, f'(0)=0, f''(0)=0
-            # f(root_blend_y)=join_value, f'(root_blend_y)=root_slope, f''(root_blend_y)=0
-            delta = join_value - root_value
             h00 = 1.0 - 10.0 * t**3 + 15.0 * t**4 - 6.0 * t**5
             h10 = t - 6.0 * t**3 + 8.0 * t**4 - 3.0 * t**5
             h20 = 0.5 * t**2 - 1.5 * t**3 + 1.5 * t**4 - 0.5 * t**5
@@ -1204,6 +1200,37 @@ def draw_front_half_le_te(
     ax.legend(loc="upper right", ncol=2, fontsize=8, framealpha=0.94)
 
 
+def draw_front_envelope(
+    ax,
+    dense_span: np.ndarray,
+    upper: np.ndarray,
+    lower: np.ndarray,
+    anchor_y: np.ndarray,
+):
+    span = float(np.max(dense_span))
+
+    ax.fill_between(dense_span, lower, upper, color="#dce7f1", zorder=1, alpha=0.88)
+    ax.fill_between(-dense_span, lower, upper, color="#dce7f1", zorder=1, alpha=0.88)
+    ax.plot(dense_span, upper, color="#0f4c5c", linewidth=2.3, zorder=3)
+    ax.plot(dense_span, lower, color="#0f4c5c", linewidth=2.3, zorder=3)
+    ax.plot(-dense_span, upper, color="#0f4c5c", linewidth=2.3, zorder=3)
+    ax.plot(-dense_span, lower, color="#0f4c5c", linewidth=2.3, zorder=3)
+
+    for x_value in np.unique(np.concatenate((-anchor_y[1:], anchor_y[1:]))):
+        ax.axvline(float(x_value), color="#64748b", linewidth=0.8, linestyle=(0, (4, 4)), alpha=0.35, zorder=2)
+
+    ax.axhline(0.0, color="#94a3b8", linewidth=0.9, linestyle=":")
+    ax.axvline(0.0, color="#94a3b8", linewidth=0.9, linestyle=":")
+
+    z_span = max(1e-9, float(np.max(upper) - np.min(lower)))
+    ax.set_xlim(-span - 1.0, span + 1.0)
+    ax.set_ylim(float(np.min(lower)) - 0.08 * z_span, float(np.max(upper)) + 0.08 * z_span)
+    ax.set_xlabel("spanwise y [m]")
+    ax.set_ylabel("vertical z [m]")
+    ax.set_aspect("equal", adjustable="box")
+    ax.grid(True, linewidth=0.35, alpha=0.30)
+
+
 def draw_profiles(
     ax,
     prepared,
@@ -1299,7 +1326,42 @@ def draw_profiles(
     ax.set_ylim(z_bot - 0.8, z_top + 0.8)
 
 
-def draw_3d(ax, prepared, dense_span: np.ndarray, leading_edge_x: np.ndarray, chord_dense: np.ndarray):
+def profile_anchor_labels(anchor_y: np.ndarray) -> tuple[str, ...]:
+    labels: list[str] = []
+    anchor_count = int(len(anchor_y))
+    c3_idx = anchor_count - 3
+    c4_idx = anchor_count - 2
+    c5_idx = anchor_count - 1
+    c1_idx = 2 if anchor_count >= 3 else None
+    for idx in range(anchor_count):
+        if idx == 0:
+            labels.append("Section 0 / C0")
+        elif c1_idx is not None and idx == c1_idx:
+            labels.append(f"Section {idx} / C1")
+        elif idx == c3_idx:
+            labels.append(f"Section {idx} / C3")
+        elif idx == c4_idx:
+            labels.append(f"Section {idx} / C4")
+        elif idx == c5_idx:
+            labels.append(f"Section {idx} / C5")
+        else:
+            labels.append(f"Section {idx}")
+    return tuple(labels)
+
+
+def draw_3d(
+    ax,
+    prepared,
+    dense_span: np.ndarray,
+    leading_edge_x: np.ndarray,
+    chord_dense: np.ndarray,
+    *,
+    upper_color: str = "#cfdff8",
+    lower_color: str = "#dce8fb",
+    show_contours: bool = True,
+    show_le_te: bool = True,
+    show_tip_root: bool = True,
+):
     x_air = prepared.section_model.x_air
     ns = dense_span.size
     nx = x_air.size
@@ -1357,36 +1419,61 @@ def draw_3d(ax, prepared, dense_span: np.ndarray, leading_edge_x: np.ndarray, ch
         "rstride": 1,
         "cstride": 1,
         "linewidth": 0.0,
-        "antialiased": True,
-        "shade": True,
+        "antialiased": False,
+        "shade": False,
+        "edgecolor": "none",
     }
     surf_kw_mirror = {
         "rstride": 1,
         "cstride": 1,
         "linewidth": 0.0,
-        "antialiased": True,
-        "shade": True,
+        "antialiased": False,
+        "shade": False,
+        "edgecolor": "none",
     }
 
-    ax.plot_surface(xu_s, yu_s, zu_s, color="#cbdcfb", alpha=0.92, **surf_kw_main)
-    ax.plot_surface(xl_s, yl_s, zl_s, color="#dbeafe", alpha=0.92, **surf_kw_main)
-    ax.plot_surface(xu_s, -yu_s, zu_s, color="#cbdcfb", alpha=0.92, **surf_kw_mirror)
-    ax.plot_surface(xl_s, -yl_s, zl_s, color="#dbeafe", alpha=0.92, **surf_kw_mirror)
+    ax.plot_surface(xu_s, yu_s, zu_s, color=upper_color, alpha=1.0, **surf_kw_main)
+    ax.plot_surface(xl_s, yl_s, zl_s, color=lower_color, alpha=1.0, **surf_kw_main)
+    ax.plot_surface(xu_s, -yu_s, zu_s, color=upper_color, alpha=1.0, **surf_kw_mirror)
+    ax.plot_surface(xl_s, -yl_s, zl_s, color=lower_color, alpha=1.0, **surf_kw_mirror)
 
-    edge_kw_main = {"color": "#1d4ed8", "linewidth": 1.2, "alpha": 0.95}
-    edge_kw_mirror = {"color": "#1d4ed8", "linewidth": 1.2, "alpha": 0.95}
-    ax.plot(xu[:, 0], yu[:, 0], zu[:, 0], **edge_kw_main)
-    ax.plot(xl[:, 0], yl[:, 0], zl[:, 0], **edge_kw_main)
-    ax.plot(xu[:, -1], yu[:, -1], zu[:, -1], **edge_kw_main)
-    ax.plot(xl[:, -1], yl[:, -1], zl[:, -1], **edge_kw_main)
-    ax.plot(xu[:, 0], -yu[:, 0], zu[:, 0], **edge_kw_mirror)
-    ax.plot(xl[:, 0], -yl[:, 0], zl[:, 0], **edge_kw_mirror)
-    ax.plot(xu[:, -1], -yu[:, -1], zu[:, -1], **edge_kw_mirror)
-    ax.plot(xl[:, -1], -yl[:, -1], zl[:, -1], **edge_kw_mirror)
-    ax.plot(x_le, y_le, z_le, color="#0f766e", linewidth=1.4, alpha=0.9)
-    ax.plot(x_le, -y_le, z_le, color="#0f766e", linewidth=1.4, alpha=0.9)
-    ax.plot(x_te, y_te, z_te, color="#b45309", linewidth=1.2, alpha=0.85)
-    ax.plot(x_te, -y_te, z_te, color="#b45309", linewidth=1.2, alpha=0.85)
+    contour_kw = {"color": "#1d4ed8", "linewidth": 1.15, "alpha": 0.95}
+    le_kw = {"color": "#0f766e", "linewidth": 1.65, "alpha": 0.98}
+    te_kw = {"color": "#b45309", "linewidth": 1.55, "alpha": 0.96}
+    tip_kw = {"color": "#475569", "linewidth": 1.05, "alpha": 0.82}
+
+    if show_contours:
+        for sign in (1.0, -1.0):
+            y_sign = sign * yu[:, 0]
+            ax.plot(xu[:, 0], y_sign, zu[:, 0], **contour_kw)
+            ax.plot(xl[:, 0], sign * yl[:, 0], zl[:, 0], **contour_kw)
+            ax.plot(xu[:, -1], sign * yu[:, -1], zu[:, -1], **contour_kw)
+            ax.plot(xl[:, -1], sign * yl[:, -1], zl[:, -1], **contour_kw)
+
+    if show_le_te:
+        for sign in (1.0, -1.0):
+            y_sign = sign * yu[:, 0]
+            ax.plot(xu[:, 0], y_sign, zu[:, 0], **le_kw)
+            ax.plot(xl[:, 0], sign * yl[:, 0], zl[:, 0], **le_kw)
+            ax.plot(xu[:, -1], sign * yu[:, -1], zu[:, -1], **te_kw)
+            ax.plot(xl[:, -1], sign * yl[:, -1], zl[:, -1], **te_kw)
+
+        ax.plot(x_le, y_le, z_le, **le_kw)
+        ax.plot(x_le, -y_le, z_le, **le_kw)
+        ax.plot(x_te, y_te, z_te, **te_kw)
+        ax.plot(x_te, -y_te, z_te, **te_kw)
+
+    if show_tip_root:
+        tip_x = np.concatenate([xu[-1, :], xl[-1, ::-1], xu[-1, :1]])
+        tip_y = np.concatenate([yu[-1, :], yl[-1, ::-1], yu[-1, :1]])
+        tip_z = np.concatenate([zu[-1, :], zl[-1, ::-1], zu[-1, :1]])
+        ax.plot(tip_x, tip_y, tip_z, **tip_kw)
+        ax.plot(tip_x, -tip_y, tip_z, **tip_kw)
+
+        root_x = np.concatenate([xu[0, :], xl[0, ::-1], xu[0, :1]])
+        root_y = np.concatenate([yu[0, :], yl[0, ::-1], yu[0, :1]])
+        root_z = np.concatenate([zu[0, :], zl[0, ::-1], zu[0, :1]])
+        ax.plot(root_x, root_y, root_z, color="#94a3b8", linewidth=0.95, alpha=0.70)
 
     ax.set_xlabel("x [m]", labelpad=6.0)
     ax.set_ylabel("spanwise y [m]", labelpad=6.0)
@@ -1479,6 +1566,7 @@ def main() -> None:
     layout_png = output_dir / "cta_layout.png"
     front_png = output_dir / "cta_front.png"
     front_half_png = output_dir / "cta_front_half_le_te.png"
+    envelope_png = output_dir / "cta_envelope.png"
     profiles_png = output_dir / "cta_profiles.png"
     view3d_png = output_dir / "cta_3d.png"
     scheme_png = output_dir / "cta_definition_scheme.png"
@@ -1494,7 +1582,14 @@ def main() -> None:
     y_sections = config.topology.y_sections_array
     profile_anchor_y = config.topology.anchor_y_array
     dense_span = np.unique(
-        np.concatenate([np.linspace(0.0, config.topology.span, 2400), y_sections, profile_anchor_y])
+        np.concatenate(
+            [
+                np.linspace(0.0, config.topology.span, 2400),
+                _dense_root_span(config),
+                y_sections,
+                profile_anchor_y,
+            ]
+        )
     )
     leading_edge_x = np.array([planform.le_x(float(y)) for y in dense_span], dtype=float)
     trailing_edge_x = np.array([planform.te_x(float(y)) for y in dense_span], dtype=float)
@@ -1506,14 +1601,7 @@ def main() -> None:
     c_te_x = te_points[public_station_indices, 0].astype(float)
     c_le_x = np.array([planform.le_x(float(value)) for value in c_y], dtype=float)
     c_chords = c_te_x - c_le_x
-    profile_labels = (
-        "Section 0 / C0",
-        "Section 1",
-        "Section 2 / C1",
-        "Section 3 / C3",
-        "Section 4 / C4",
-        "Section 5 / C5",
-    )
+    profile_labels = profile_anchor_labels(profile_anchor_y)
     profile_chords = np.array(
         [float(planform.te_x(float(yy)) - planform.le_x(float(yy))) for yy in profile_anchor_y],
         dtype=float,
@@ -1582,6 +1670,18 @@ def main() -> None:
     save_figure(fig_front_half, front_half_png, dpi=220)
     plt.close(fig_front_half)
 
+    fig_envelope, ax_envelope = plt.subplots(figsize=(14.0, 5.4), constrained_layout=True)
+    draw_front_envelope(
+        ax_envelope,
+        dense_span,
+        upper,
+        lower,
+        front_anchor_y,
+    )
+    ax_envelope.set_title("CTA wing envelope")
+    save_figure(fig_envelope, envelope_png, dpi=220)
+    plt.close(fig_envelope)
+
     fig_profiles, ax_profiles = plt.subplots(figsize=(11.6, 8.1), constrained_layout=True)
     draw_profiles(ax_profiles, prepared, profile_anchor_y, profile_chords, profile_labels)
     save_figure(fig_profiles, profiles_png, dpi=230, bbox_inches="tight")
@@ -1634,6 +1734,7 @@ def main() -> None:
     print(f"CTA layout PNG written to: {layout_png}")
     print(f"CTA front PNG written to: {front_png}")
     print(f"CTA half-wing front PNG written to: {front_half_png}")
+    print(f"CTA envelope PNG written to: {envelope_png}")
     print(f"CTA profiles PNG written to: {profiles_png}")
     print(f"CTA definition scheme PNG written to: {scheme_png}")
     print(f"CTA 3D PNG written to: {view3d_png}")

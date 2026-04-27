@@ -9,7 +9,11 @@ REPO_ROOT = CTA_DIR.parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from parametrization.CTA.design_space import cta_design_space_summary, cta_parameter_metadata
+from parametrization.CTA.design_space import (
+    cta_design_space_summary,
+    cta_parameter_metadata,
+    cta_thickness_constraints,
+)
 
 
 def write_csv(path: Path, rows):
@@ -33,6 +37,7 @@ def write_csv(path: Path, rows):
 
 def write_markdown(path: Path, rows, summary):
     fixed = summary["fixed_parameters"]
+    thickness_constraints = summary.get("thickness_constraints", [])
     lines = [
         "# CTA AI Design-Space Bounds",
         "",
@@ -57,6 +62,21 @@ def write_markdown(path: Path, rows, summary):
             "| {parameter} | {display_name} | {symbol} | {units} | {lower_bound:.6g} | "
             "{cta_value:.6g} | {upper_bound:.6g} |".format(**row)
         )
+    if thickness_constraints:
+        lines.extend(
+            [
+                "",
+                "## Thickness Constraints",
+                "",
+                "| Parameter | Station | Symbol | Units | Lower | Reference | Upper |",
+                "| --- | --- | --- | --- | --- | --- | --- |",
+            ]
+        )
+        for row in thickness_constraints:
+            lines.append(
+                "| {parameter} | {station} | {symbol} | {units} | {lower_bound:.6g} | "
+                "{reference:.6g} | {upper_bound:.6g} |".format(**row)
+            )
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
@@ -69,6 +89,7 @@ def main() -> None:
 
     rows = cta_parameter_metadata()
     summary = cta_design_space_summary()
+    summary["thickness_constraints"] = cta_thickness_constraints()
 
     write_csv(csv_path, rows)
     write_markdown(md_path, rows, summary)

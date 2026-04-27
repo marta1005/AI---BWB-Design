@@ -40,6 +40,8 @@ def _parameter_specs(bounds: Dict[str, tuple[float, float]]):
         ("c2_c1_ratio", "C3", "m", float(bounds["c2_c1_ratio"][0]), float(bounds["c2_c1_ratio"][1])),
         ("c4_absolute", "C4", "m", 6.8, 9.8),
         ("c4_c1_ratio", "C5", "m", float(bounds["c4_c1_ratio"][0]), float(bounds["c4_c1_ratio"][1])),
+        ("s2_deg", "S1", "deg", float(bounds["s2_deg"][0]), float(bounds["s2_deg"][1])),
+        ("s3_deg", "S2", "deg", float(bounds["s3_deg"][0]), float(bounds["s3_deg"][1])),
         ("b2_span_ratio", "B2/Bw", "-", float(bounds["b2_span_ratio"][0]), float(bounds["b2_span_ratio"][1])),
         ("span", "Bw", "m", float(bounds["span"][0]), float(bounds["span"][1])),
     ]
@@ -58,6 +60,8 @@ def _write_csv(samples: List[Dict[str, float]]) -> None:
         "C3_m",
         "C4_m",
         "C5_m",
+        "S1_50_deg",
+        "S2_25_deg",
         "B2_over_Bw",
         "Bw_m",
     ]
@@ -72,6 +76,8 @@ def _write_csv(samples: List[Dict[str, float]]) -> None:
                     "C3_m": float(sample["c2_c1_ratio"]),
                     "C4_m": _c4_absolute(sample),
                     "C5_m": float(sample["c4_c1_ratio"]),
+                    "S1_50_deg": float(sample["s2_deg"]),
+                    "S2_25_deg": float(sample["s3_deg"]),
                     "B2_over_Bw": float(sample["b2_span_ratio"]),
                     "Bw_m": float(sample["span"]),
                 }
@@ -89,7 +95,7 @@ def main() -> None:
     specs = _parameter_specs(bounds)
     x = np.arange(len(samples), dtype=int)
 
-    fig, axes = plt.subplots(2, 3, figsize=(16.5, 7.9), constrained_layout=True, sharex=True)
+    fig, axes = plt.subplots(3, 3, figsize=(16.5, 10.4), constrained_layout=True, sharex=True)
     axes_flat = axes.ravel()
 
     for ax, (name, label, units, lower, upper) in zip(axes_flat, specs):
@@ -107,6 +113,9 @@ def main() -> None:
         ax.set_title(label)
         ax.set_ylabel(units)
         ax.grid(True, linewidth=0.35, alpha=0.25)
+
+    for ax in axes_flat[len(specs) :]:
+        ax.axis("off")
 
     for ax in axes_flat:
         ax.set_xlabel("Frame")

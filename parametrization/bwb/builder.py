@@ -7,6 +7,7 @@ from .planform import SectionedPlanform, build_sectioned_bwb_planform
 from .sections import SectionModel, build_section_model
 from .specs import SectionedBWBModelConfig
 from .spanwise_laws import ResolvedSpanwiseLaws, resolve_spanwise_laws, vertical_offsets
+from parametrization.shared.cst import cosine_spacing
 from .validation import (
     LoftDefinition,
     ValidationSummary,
@@ -29,6 +30,11 @@ class PreparedGeometry:
 
 def build_span_stations(config: SectionedBWBModelConfig) -> np.ndarray:
     base_stations = np.linspace(0.0, config.topology.span, config.sampling.num_base_stations)
+    root_blend_stations = np.array([], dtype=float)
+    if config.planform.symmetry_blend_y > 1.0e-12:
+        # Cluster stations near the symmetry plane so the exported loft preserves
+        # the intended zero-slope entry instead of replacing it with a coarse secant.
+        root_blend_stations = float(config.planform.symmetry_blend_y) * cosine_spacing(25)
     planform_helper_stations = np.unique(
         np.concatenate(
             [
@@ -39,7 +45,14 @@ def build_span_stations(config: SectionedBWBModelConfig) -> np.ndarray:
     )
     span_stations = np.unique(
         np.round(
-            np.concatenate([base_stations, config.topology.anchor_y_array, planform_helper_stations]),
+            np.concatenate(
+                [
+                    base_stations,
+                    root_blend_stations,
+                    config.topology.anchor_y_array,
+                    planform_helper_stations,
+                ]
+            ),
             decimals=12,
         )
     )

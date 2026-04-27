@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Optional, Tuple
@@ -5,6 +6,10 @@ from typing import Optional, Tuple
 import numpy as np
 
 from .topology import SectionedBWBTopologySpec
+
+
+ScalarInterpolant = Callable[[float], float]
+ScalarInterpolationFactory = Callable[[np.ndarray, np.ndarray], ScalarInterpolant]
 
 
 @dataclass
@@ -67,6 +72,76 @@ class SectionProfileRelationSpec:
                 )
 
 
+@dataclass(frozen=True)
+class ExactSectionProfileOverrideSpec:
+    section_index: int
+    x: Tuple[float, ...]
+    upper: Tuple[float, ...]
+    lower: Tuple[float, ...]
+    tc_max: float
+    x_tmax: float
+    te_thickness: float
+    y_end: Optional[float] = None
+    y_end_section_index: Optional[int] = None
+    blend_to_base: bool = False
+    blend_curve: str = "smoothstep"
+
+    def validate(self, prefix: str, section_count: Optional[int] = None) -> None:
+        if section_count is not None and not (0 <= self.section_index < section_count):
+            raise ValueError(
+                f"{prefix}.section_index must lie inside [0, {section_count - 1}], got {self.section_index}"
+            )
+        if len(self.x) == 0:
+            raise ValueError(f"{prefix}.x must be non-empty")
+        if not (len(self.x) == len(self.upper) == len(self.lower)):
+            raise ValueError(
+                f"{prefix}.x, upper and lower must have the same length, got "
+                f"{(len(self.x), len(self.upper), len(self.lower))}"
+            )
+        x_arr = np.asarray(self.x, dtype=float)
+        if np.any(~np.isfinite(x_arr)):
+            raise ValueError(f"{prefix}.x must be finite")
+        if np.any(np.diff(x_arr) <= 0.0):
+            raise ValueError(f"{prefix}.x must be strictly increasing")
+        if x_arr[0] < 0.0 or x_arr[-1] > 1.0:
+            raise ValueError(f"{prefix}.x must stay inside [0, 1], got {(x_arr[0], x_arr[-1])}")
+        if any(not np.isfinite(value) for value in self.upper):
+            raise ValueError(f"{prefix}.upper must be finite")
+        if any(not np.isfinite(value) for value in self.lower):
+            raise ValueError(f"{prefix}.lower must be finite")
+        if self.tc_max <= 0.0:
+            raise ValueError(f"{prefix}.tc_max must be positive, got {self.tc_max}")
+        if not (0.0 < self.x_tmax < 1.0):
+            raise ValueError(f"{prefix}.x_tmax must lie in (0, 1), got {self.x_tmax}")
+        if self.te_thickness < 0.0:
+            raise ValueError(f"{prefix}.te_thickness must be non-negative, got {self.te_thickness}")
+        if self.y_end is not None and not np.isfinite(float(self.y_end)):
+            raise ValueError(f"{prefix}.y_end must be finite when provided, got {self.y_end}")
+        if self.y_end_section_index is not None:
+            if section_count is None:
+                raise ValueError(
+                    f"{prefix}.y_end_section_index requires section_count for validation"
+                )
+            if not (0 <= self.y_end_section_index < section_count):
+                raise ValueError(
+                    f"{prefix}.y_end_section_index must lie inside [0, {section_count - 1}], "
+                    f"got {self.y_end_section_index}"
+                )
+            if self.y_end_section_index <= self.section_index:
+                raise ValueError(
+                    f"{prefix}.y_end_section_index must reference a later section than "
+                    f"section_index, got {self.y_end_section_index} <= {self.section_index}"
+                )
+        if self.y_end is not None and self.y_end_section_index is not None:
+            raise ValueError(
+                f"{prefix} cannot define both y_end and y_end_section_index at the same time"
+            )
+        if self.blend_curve not in {"smoothstep", "ellipse"}:
+            raise ValueError(
+                f"{prefix}.blend_curve must be one of ('smoothstep', 'ellipse'), got {self.blend_curve!r}"
+            )
+
+
 @dataclass
 class PlanformSpec:
     le_root_x: float = 0.0
@@ -91,6 +166,7 @@ class PlanformSpec:
     te_blend_fraction: Optional[float] = None
     te_min_linear_core_fraction: Optional[float] = None
     le_linear_start_index: Optional[int] = None
+    te_linear_start_index: Optional[int] = None
     le_exact_segments: Tuple[int, ...] = ()
     le_spline_bridge: Optional[Tuple[int, int]] = None
     te_spline_bridge: Optional[Tuple[int, int]] = None
@@ -134,6 +210,10 @@ class PlanformSpec:
         if self.le_linear_start_index is not None and self.le_linear_start_index < 1:
             raise ValueError(
                 f"le_linear_start_index must be >= 1 when provided, got {self.le_linear_start_index}"
+            )
+        if self.te_linear_start_index is not None and self.te_linear_start_index < 1:
+            raise ValueError(
+                f"te_linear_start_index must be >= 1 when provided, got {self.te_linear_start_index}"
             )
         if any(index < 0 for index in self.le_exact_segments):
             raise ValueError(
@@ -371,6 +451,12 @@ class PlanformSpec:
                 raise ValueError(
                     f"le_linear_start_index must be < {point_count - 1}, got {self.le_linear_start_index}"
                 )
+        if self.te_linear_start_index is not None:
+            point_count = self.trailing_edge_points(topology).shape[0]
+            if self.te_linear_start_index >= point_count - 1:
+                raise ValueError(
+                    f"te_linear_start_index must be < {point_count - 1}, got {self.te_linear_start_index}"
+                )
         if self.le_spline_bridge is not None:
             point_count = self.leading_edge_points(topology).shape[0]
             start_idx, end_idx = self.le_spline_bridge
@@ -392,6 +478,9 @@ class AnchoredSpanwiseLaw:
     section_indices: Tuple[int, ...]
     values: Tuple[float, ...]
     interpolation: str = "pyspline"
+    interpolation_factory: Optional[ScalarInterpolationFactory] = None
+    linear_start_index: Optional[int] = None
+    root_blend_y: Optional[float] = None
 
     def validate(self, topology: SectionedBWBTopologySpec, label: str) -> None:
         if len(self.section_indices) != len(self.values):
@@ -401,11 +490,19 @@ class AnchoredSpanwiseLaw:
             )
         if len(self.section_indices) < 2:
             raise ValueError(f"{label} must have at least 2 anchors")
-        if self.interpolation not in {"linear", "pchip", "cubic", "pyspline"}:
+        if self.interpolation_factory is None and self.interpolation not in {
+            "linear",
+            "blended_linear",
+            "pchip",
+            "cubic",
+            "pyspline",
+        }:
             raise ValueError(
-                f"{label}.interpolation must be 'linear', 'pchip', 'cubic' or 'pyspline', "
-                f"got {self.interpolation!r}"
+                f"{label}.interpolation must be 'linear', 'blended_linear', 'pchip', 'cubic' or "
+                f"'pyspline' unless interpolation_factory is provided, got {self.interpolation!r}"
             )
+        if self.interpolation_factory is not None and not callable(self.interpolation_factory):
+            raise ValueError(f"{label}.interpolation_factory must be callable when provided")
         section_count = topology.anchor_y_array.size
         if any(index < 0 or index >= section_count for index in self.section_indices):
             raise ValueError(
@@ -414,6 +511,16 @@ class AnchoredSpanwiseLaw:
             )
         if any(left >= right for left, right in zip(self.section_indices[:-1], self.section_indices[1:])):
             raise ValueError(f"{label}.section_indices must be strictly increasing, got {self.section_indices}")
+        if self.linear_start_index is not None:
+            if not (1 <= int(self.linear_start_index) < len(self.section_indices) - 1):
+                raise ValueError(
+                    f"{label}.linear_start_index must lie in [1, {len(self.section_indices) - 2}], "
+                    f"got {self.linear_start_index}"
+                )
+        if self.root_blend_y is not None and float(self.root_blend_y) < 0.0:
+            raise ValueError(
+                f"{label}.root_blend_y must be non-negative when provided, got {self.root_blend_y}"
+            )
 
 
 @dataclass
@@ -472,6 +579,10 @@ class SectionFamilySpec:
             SectionProfileRelationSpec(),
         )
     )
+    shape_hold_segments: Tuple[int, ...] = ()
+    shape_hold_tc_ramp_segments: Tuple[int, ...] = ()
+    exact_profile_overrides: Tuple[ExactSectionProfileOverrideSpec, ...] = ()
+    profile_post_transform: Optional[Callable[..., tuple[np.ndarray, np.ndarray]]] = None
 
     @property
     def ncoeff(self) -> int:
@@ -532,9 +643,14 @@ class SectionFamilySpec:
             raise ValueError(f"cst_degree must be at least 2, got {self.cst_degree}")
         if self.n1 <= 0.0 or self.n2 <= 0.0:
             raise ValueError(f"n1 and n2 must be positive, got {(self.n1, self.n2)}")
-        if self.profile_generation_mode not in {"cst_only", "enforce_targets"}:
+        if self.profile_generation_mode not in {
+            "cst_only",
+            "enforce_targets",
+            "camber_thickness_interp",
+        }:
             raise ValueError(
-                "profile_generation_mode must be 'cst_only' or 'enforce_targets', "
+                "profile_generation_mode must be 'cst_only', 'enforce_targets' or "
+                f"'camber_thickness_interp', "
                 f"got {self.profile_generation_mode!r}"
             )
         if self.camber_mode_width <= 0.0:
@@ -558,6 +674,27 @@ class SectionFamilySpec:
             )
         for idx, relation in enumerate(self.profile_relations):
             relation.validate(f"profile_relations[{idx}]", idx, len(base_specs))
+        for start_idx in self.shape_hold_segments:
+            if not (0 <= int(start_idx) < len(base_specs) - 1):
+                raise ValueError(
+                    "shape_hold_segments must reference a valid left segment anchor index, "
+                    f"got {self.shape_hold_segments} for {len(base_specs)} sections"
+                )
+        for start_idx in self.shape_hold_tc_ramp_segments:
+            if not (0 <= int(start_idx) < len(base_specs) - 1):
+                raise ValueError(
+                    "shape_hold_tc_ramp_segments must reference a valid left segment anchor index, "
+                    f"got {self.shape_hold_tc_ramp_segments} for {len(base_specs)} sections"
+                )
+            if int(start_idx) not in {int(value) for value in self.shape_hold_segments}:
+                raise ValueError(
+                    "shape_hold_tc_ramp_segments must be a subset of shape_hold_segments, "
+                    f"got ramp segments {self.shape_hold_tc_ramp_segments} and hold segments {self.shape_hold_segments}"
+                )
+        for idx, override in enumerate(self.exact_profile_overrides):
+            override.validate(f"exact_profile_overrides[{idx}]", section_count=len(base_specs))
+        if self.profile_post_transform is not None and not callable(self.profile_post_transform):
+            raise ValueError("profile_post_transform must be callable when provided")
         for idx, spec in enumerate(base_specs, start=1):
             spec.validate(f"section_spec[{idx - 1}]", expected_size)
             if not (self.x_tc_window[0] <= spec.x_tmax <= self.x_tc_window[1]):
@@ -573,6 +710,7 @@ class SpanwiseLawSpec:
     dihedral_deg: float = 0.0
     vertical_offset_m: float = 0.03
     vertical_offset_z: Optional[AnchoredSpanwiseLaw] = None
+    vertical_offset_callable: Optional[Callable[[float], float]] = None
     twist_deg: AnchoredSpanwiseLaw = field(
         default_factory=lambda: AnchoredSpanwiseLaw(
             section_indices=(0, 1, 2, 3),
@@ -580,6 +718,7 @@ class SpanwiseLawSpec:
             interpolation="pyspline",
         )
     )
+    twist_callable: Optional[Callable[[float], float]] = None
     camber_delta: AnchoredSpanwiseLaw = field(
         default_factory=lambda: AnchoredSpanwiseLaw(
             section_indices=(0, 1, 2, 3),
@@ -593,6 +732,10 @@ class SpanwiseLawSpec:
             raise ValueError(f"dihedral_deg must lie in [-30, 30], got {self.dihedral_deg}")
         if not np.isfinite(self.vertical_offset_m):
             raise ValueError(f"vertical_offset_m must be finite, got {self.vertical_offset_m}")
+        if self.vertical_offset_callable is not None and not callable(self.vertical_offset_callable):
+            raise ValueError("vertical_offset_callable must be callable when provided")
+        if self.twist_callable is not None and not callable(self.twist_callable):
+            raise ValueError("twist_callable must be callable when provided")
         if self.vertical_offset_z is not None:
             self.vertical_offset_z.validate(topology, "vertical_offset_z")
         self.twist_deg.validate(topology, "twist_deg")
@@ -605,6 +748,8 @@ class SamplingSpec:
     num_base_stations: int = 41
     section_curve_n_ctl: int = 41
     section_interpolation: str = "pyspline"
+    section_interpolation_factory: Optional[ScalarInterpolationFactory] = None
+    section_linear_start_index: Optional[int] = None
     airfoil_distribution_mode: str = "all"
     k_span: int = 4
 
@@ -615,10 +760,25 @@ class SamplingSpec:
             raise ValueError("num_base_stations must be at least 2")
         if self.section_curve_n_ctl < 4:
             raise ValueError("section_curve_n_ctl must be at least 4")
-        if self.section_interpolation not in {"cubic", "pchip", "linear", "pyspline"}:
+        if self.section_interpolation_factory is None and self.section_interpolation not in {
+            "cubic",
+            "pchip",
+            "linear",
+            "blended_linear",
+            "pyspline",
+        }:
             raise ValueError(
-                "section_interpolation must be 'linear', 'cubic', 'pchip' or 'pyspline', "
-                f"got {self.section_interpolation!r}"
+                "section_interpolation must be 'linear', 'blended_linear', 'cubic', 'pchip' or "
+                f"'pyspline' unless section_interpolation_factory is provided, got {self.section_interpolation!r}"
+            )
+        if self.section_interpolation_factory is not None and not callable(
+            self.section_interpolation_factory
+        ):
+            raise ValueError("section_interpolation_factory must be callable when provided")
+        if self.section_linear_start_index is not None and self.section_linear_start_index < 1:
+            raise ValueError(
+                "section_linear_start_index must be >= 1 when provided, "
+                f"got {self.section_linear_start_index}"
             )
         if self.airfoil_distribution_mode not in {"all", "anchors"}:
             raise ValueError(
@@ -682,8 +842,16 @@ class SectionedBWBModelConfig:
         self.export.validate()
         self.volume.validate(self.topology)
         section_count = self.topology.anchor_y_array.size
+        if self.sampling.section_linear_start_index is not None:
+            if self.sampling.section_linear_start_index >= section_count - 1:
+                raise ValueError(
+                    "sampling.section_linear_start_index must be < "
+                    f"{section_count - 1}, got {self.sampling.section_linear_start_index}"
+                )
         if len(self.sections.section_specs) != section_count:
             raise ValueError(
                 "section CST specs must match topology.anchor_y, "
                 f"got {len(self.sections.section_specs)} specs for {section_count} sections"
             )
+        for idx, override in enumerate(self.sections.exact_profile_overrides):
+            override.validate(f"exact_profile_overrides[{idx}]", section_count=section_count)

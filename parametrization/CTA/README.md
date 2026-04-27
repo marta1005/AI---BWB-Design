@@ -266,12 +266,29 @@ These fields control the generated geometry resolution:
 
 For the current case, the main defaults are:
 
-- `section_interpolation = "linear"`
+- `section_interpolation = "pchip"`
 - `airfoil_distribution_mode = "anchors"`
 - `num_airfoil_points = 241`
 - `num_base_stations = 41`
 - `section_curve_n_ctl = 41`
 - `k_span = 4`
+
+### 3.6 Current spanwise laws
+
+The current CTA case uses these laws between anchors:
+
+| Quantity | Current law | Where it is declared | Affects IGES? |
+| --- | --- | --- | --- |
+| Profile interpolation between anchor sections | `pchip` | `template.section_interpolation` in `cta_case_inputs.json` | Yes |
+| Twist law | `pchip` | `config.spanwise.twist_deg` in `case.py` | Yes |
+| Vertical `LE_z` / `vertical_offset_z` law | `pchip` | `config.spanwise.vertical_offset_z` in `case.py` | Yes |
+| Camber-delta law | `pyspline` | `config.spanwise.camber_delta` in `case.py` | Yes |
+| Plot-only front-view smoothing | whatever is coded in `plot_cta_views.py` | plotting only | No |
+
+This distinction is important:
+
+- anything declared in `case.py` / `cta_case_inputs.json` feeds the real geometry
+- anything added only in `plot_cta_views.py` changes the figure, not the IGES
 
 ## What Is Fixed, What Is Derived
 
@@ -386,6 +403,102 @@ These are important because they are the bridge between:
 
 - high-level CTA declarations
 - and the generic `bwb` geometry core
+
+## If You Want To Use pyGeo
+
+When we export CTA as IGES, `pyGeo` does **not** start from the plotting views.
+It starts from the resolved BWB geometry.
+
+The actual export path is:
+
+1. `build_cta_design()`
+2. `to_cta_model_config(...)`
+3. `prepare_geometry(config)`
+4. `build_surface(config)`
+5. `pyGeo("liftingSurface", ...)`
+
+So the flow is:
+
+```text
+CTA JSON/case.py
+    -> resolved CTA design
+    -> SectionedBWBModelConfig
+    -> prepared loft definition
+    -> pyGeo lifting-surface loft
+    -> IGES
+```
+
+The object passed to `pyGeo` is not a front-view sketch.
+It is a spanwise set of sections plus their placement laws.
+
+Concretely, `pyGeo` receives:
+
+- `xsections`
+  Airfoil files written at anchor/sample stations.
+- `scale`
+  Local chord at each station.
+- `x`
+  Leading-edge x position at each station.
+- `y`
+  Vertical position at each station.
+- `z`
+  Spanwise position at each station.
+- `rotZ`
+  Local twist at each station.
+- `offset`
+  Local section offset.
+- `teHeightScaled`
+  Local trailing-edge thickness.
+- `nCtl`, `kSpan`
+  Loft-control settings.
+
+For CTA, the export script is:
+
+- `parametrization/CTA/codes/exports/run_cta_iges.py`
+
+and the core handoff to `pyGeo` happens in:
+
+- `parametrization/bwb/exporters.py`
+
+## What This Means For Transition Control
+
+This is the key point:
+
+- `pyGeo` gives us a continuous loft
+- but `pyGeo` does **not** decide what the transition should be
+
+The transition shape is already largely determined **before** the export, by:
+
+- the chosen profile anchors
+- the section interpolation mode
+- the LE/TE control points and blend settings
+- the twist law
+- the vertical offset law
+- the spanwise station sampling
+
+So, yes, we do have control over the transitions, but it is **indirect**.
+We do **not** usually control them as one final explicit hand-drawn curve.
+Instead, we control the ingredients that define the loft.
+
+In practice:
+
+- if you change something only in `plot_cta_views.py`, that affects the figure
+  only
+- if you want the IGES to change, the change must happen in `case.py` / the CTA
+  config / the BWB build inputs
+
+So, for the current CTA case:
+
+- the loft uses `pchip` for profile interpolation
+- the twist law uses `pchip`
+- the vertical law uses `pchip`
+- the camber delta uses `pyspline`
+- and `airfoil_distribution_mode = "anchors"` means the exported `.dat` files
+  are the anchor sections only, while `pyGeo` interpolates the missing spanwise
+  stations during loft construction
+
+That is why a front-view tweak can look right in a plot and still not belong to
+the exported geometry.
 
 ## What You Can Change Safely
 

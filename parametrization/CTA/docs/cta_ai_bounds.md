@@ -2,7 +2,7 @@
 
 ## Fixed Parameters
 
-- `S` (`s1_deg`): `45.07529007428979` deg
+- `S` (`s1_deg`): `45.07529007428978` deg
 - `B1` (`b1_fixed_m`): `8.041` m
 - `C1` conditioned by fixed `S` and straight `TE(C0->C1)`
 - no public `C2`: the inboard `TE(C1->C3)` blend is built with a hidden helper point
@@ -75,3 +75,12 @@
 | c4_lower_cst_3 | C5 LOWER CST coefficient 3 | A_lower,3^C5 | - | 0.0986002 | 0.1486 | 0.1986 |
 | c4_lower_cst_4 | C5 LOWER CST coefficient 4 | A_lower,4^C5 | - | 0.09199 | 0.13199 | 0.17199 |
 | c4_lower_cst_5 | C5 LOWER CST coefficient 5 | A_lower,5^C5 | - | 0.0622349 | 0.0922349 | 0.122235 |
+
+## Thickness Constraints
+
+| Parameter | Station | Symbol | Units | Lower | Reference | Upper |
+| --- | --- | --- | --- | --- | --- | --- |
+| RThickness_CentreBody | C0 | RThickness_C0 | - | 0.12 | 0.141 | 0.18 |
+| RThickness_MidWing | C3 | RThickness_C3 | - | 0.14 | 0.164 | 0.2 |
+| RThickness_OutWing | C4 | RThickness_C4 | - | 0.08 | 0.1027 | 0.16 |
+| RThickness_OutWing_Tip | C5 | RThickness_C5 | - | 0.08 | 0.095 | 0.13 |

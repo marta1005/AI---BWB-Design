@@ -68,6 +68,8 @@ def _public_sample_to_cta_design(sample: Dict[str, float]):
         c2_c1_ratio=c3_m / c0_m,
         c3_c1_ratio=c4_m / c0_m,
         c4_c1_ratio=c5_m / c0_m,
+        s2_deg=float(sample["s2_deg"]),
+        s3_deg=float(sample["s3_deg"]),
     )
 
 
@@ -78,6 +80,8 @@ PUBLIC_PARAMETER_NAMES = (
     "c2_c1_ratio",
     "c4_c3_ratio",
     "c4_c1_ratio",
+    "s2_deg",
+    "s3_deg",
 )
 
 
@@ -92,201 +96,108 @@ def _parameter_box_text(sample: Dict[str, float]) -> str:
             f"C4/C3 = {float(sample['c4_c3_ratio']):.3f}",
             f"C4 = {c4_m:.2f} m",
             f"C5 = {float(sample['c4_c1_ratio']):.2f} m",
+            f"S1 = {float(sample['s2_deg']):.2f} deg",
+            f"S2 = {float(sample['s3_deg']):.2f} deg",
         )
     )
 
 
-def _jittered_random_series(
-    lower: float,
-    upper: float,
-    frame_count: int,
+def _latin_hypercube_samples(
+    bounds: Dict[str, tuple[float, float]],
+    sample_count: int,
     rng: np.random.Generator,
-) -> np.ndarray:
-    if frame_count <= 1:
-        return np.asarray([0.5 * (float(lower) + float(upper))], dtype=float)
-    edges = np.linspace(float(lower), float(upper), int(frame_count) + 1, dtype=float)
-    values = np.array(
-        [rng.uniform(edges[idx], edges[idx + 1]) for idx in range(int(frame_count))],
-        dtype=float,
-    )
-    rng.shuffle(values)
-    return values
-
-
-def build_random_samples(
-    frame_count: int = 51,
-    seed: int = 11,
 ) -> List[Dict[str, float]]:
-    space = build_cta_design_space()
-    rng = np.random.default_rng(int(seed))
-    bounds = space.bounds
-    series = {
-        name: _jittered_random_series(bounds[name][0], bounds[name][1], frame_count, rng)
-        for name in PUBLIC_PARAMETER_NAMES
-    }
-    return [
-        {name: float(series[name][frame_idx]) for name in PUBLIC_PARAMETER_NAMES}
-        for frame_idx in range(int(frame_count))
+    if sample_count <= 0:
+        return []
+
+    samples: List[Dict[str, float]] = [
+        {} for _ in range(int(sample_count))
     ]
-
-
-def _clip_sample_to_bounds(sample: Dict[str, float], bounds: Dict[str, tuple[float, float]]) -> Dict[str, float]:
-    clipped: Dict[str, float] = {}
     for name in PUBLIC_PARAMETER_NAMES:
         lower, upper = bounds[name]
-        clipped[name] = float(np.clip(float(sample[name]), float(lower), float(upper)))
-    return clipped
+        unit_values = (rng.permutation(sample_count) + rng.random(sample_count)) / float(sample_count)
+        values = float(lower) + unit_values * (float(upper) - float(lower))
+        for idx, value in enumerate(values):
+            samples[idx][name] = float(value)
+    return samples
 
 
-def _interpolate_samples(
-    start: Dict[str, float],
-    end: Dict[str, float],
-    interval_frames: int,
-) -> List[Dict[str, float]]:
-    if interval_frames <= 0:
-        return [dict(start)]
-    frames: List[Dict[str, float]] = []
-    for step in range(interval_frames):
-        t = step / float(interval_frames)
-        frames.append(
-            {
-                name: float((1.0 - t) * float(start[name]) + t * float(end[name]))
-                for name in PUBLIC_PARAMETER_NAMES
-            }
-        )
-    return frames
-
-
-def _advance_focused_anchor_samples(
-    cta_view: Dict[str, float],
+def _normalized_distance(
+    sample_a: Dict[str, float],
+    sample_b: Dict[str, float],
     bounds: Dict[str, tuple[float, float]],
-    rng: np.random.Generator,
+) -> float:
+    deltas = []
+    for name in PUBLIC_PARAMETER_NAMES:
+        lower, upper = bounds[name]
+        span = max(float(upper) - float(lower), 1.0e-12)
+        deltas.append((float(sample_a[name]) - float(sample_b[name])) / span)
+    return float(np.linalg.norm(np.asarray(deltas, dtype=float)))
+
+
+def _order_samples_nearest_neighbor(
+    samples: List[Dict[str, float]],
+    start_sample: Dict[str, float],
+    bounds: Dict[str, tuple[float, float]],
 ) -> List[Dict[str, float]]:
-    def random_anchor(local_scale: float = 0.42) -> Dict[str, float]:
-        sample = dict(cta_view)
-        for name in PUBLIC_PARAMETER_NAMES:
-            lower, upper = bounds[name]
-            span = float(upper) - float(lower)
-            ref = float(cta_view[name])
-            local_half = float(local_scale) * span
-            sample[name] = float(
-                np.clip(
-                    rng.uniform(ref - local_half, ref + local_half),
-                    float(lower),
-                    float(upper),
-                )
+    remaining = [dict(sample) for sample in samples]
+    ordered: List[Dict[str, float]] = []
+    current = dict(start_sample)
+
+    while remaining:
+        next_index = min(
+            range(len(remaining)),
+            key=lambda idx: _normalized_distance(current, remaining[idx], bounds),
+        )
+        current = remaining.pop(next_index)
+        ordered.append(current)
+    return ordered
+
+
+def _interpolate_sample_path(
+    key_samples: List[Dict[str, float]],
+    transition_steps: int,
+) -> List[Dict[str, float]]:
+    if not key_samples:
+        return []
+    if int(transition_steps) <= 1 or len(key_samples) == 1:
+        return [dict(sample) for sample in key_samples]
+
+    samples: List[Dict[str, float]] = []
+    for start, end in zip(key_samples[:-1], key_samples[1:]):
+        for step in range(int(transition_steps)):
+            t = step / float(transition_steps)
+            samples.append(
+                {
+                    name: float((1.0 - t) * float(start[name]) + t * float(end[name]))
+                    for name in PUBLIC_PARAMETER_NAMES
+                }
             )
-        return sample
-
-    forward_ref = dict(cta_view)
-    forward_ref.update(
-        {
-            "span": float(cta_view["span"]),
-            "b2_span_ratio": float(cta_view["b2_span_ratio"]),
-            "c2_c1_ratio": float(bounds["c2_c1_ratio"][1]),
-            "c4_c3_ratio": float(bounds["c4_c3_ratio"][1]),
-            "c4_c1_ratio": float(bounds["c4_c1_ratio"][0]),
-        }
-    )
-
-    forward_b2 = dict(cta_view)
-    forward_b2.update(
-        {
-            "span": float(cta_view["span"]),
-            "b2_span_ratio": 0.35 * float(bounds["b2_span_ratio"][0]) + 0.65 * float(bounds["b2_span_ratio"][1]),
-            "c2_c1_ratio": float(bounds["c2_c1_ratio"][1]),
-            "c4_c3_ratio": float(bounds["c4_c3_ratio"][1]),
-            "c4_c1_ratio": float(bounds["c4_c1_ratio"][0]),
-        }
-    )
-
-    forward_max = dict(cta_view)
-    forward_max.update(
-        {
-            "span": float(bounds["span"][1]),
-            "b2_span_ratio": float(bounds["b2_span_ratio"][1]),
-            "c2_c1_ratio": float(bounds["c2_c1_ratio"][1]),
-            "c4_c3_ratio": float(bounds["c4_c3_ratio"][1]),
-            "c4_c1_ratio": float(bounds["c4_c1_ratio"][0]),
-        }
-    )
-
-    forward_soft = dict(cta_view)
-    forward_soft.update(
-        {
-            "span": float(cta_view["span"]),
-            "b2_span_ratio": float(cta_view["b2_span_ratio"]),
-            "c2_c1_ratio": 0.65 * float(bounds["c2_c1_ratio"][1]) + 0.35 * float(cta_view["c2_c1_ratio"]),
-            "c4_c3_ratio": 0.75 * float(bounds["c4_c3_ratio"][1]) + 0.25 * float(cta_view["c4_c3_ratio"]),
-            "c4_c1_ratio": float(bounds["c4_c1_ratio"][0]),
-        }
-    )
-
-    aft_max = dict(cta_view)
-    aft_max.update(
-        {
-            "span": float(bounds["span"][0]),
-            "b2_span_ratio": float(bounds["b2_span_ratio"][0]),
-            "c2_c1_ratio": float(bounds["c2_c1_ratio"][0]),
-            "c4_c3_ratio": float(bounds["c4_c3_ratio"][0]),
-            "c4_c1_ratio": float(bounds["c4_c1_ratio"][1]),
-        }
-    )
-
-    anchors = [
-        dict(cta_view),
-        random_anchor(0.38),
-        forward_ref,
-        random_anchor(0.45),
-        aft_max,
-        random_anchor(0.40),
-        forward_b2,
-        random_anchor(0.46),
-        forward_max,
-        random_anchor(0.42),
-        forward_soft,
-        random_anchor(0.50),
-        aft_max,
-        random_anchor(0.38),
-        forward_ref,
-        random_anchor(0.44),
-        forward_max,
-        random_anchor(0.36),
-        forward_b2,
-        random_anchor(0.48),
-        aft_max,
-        random_anchor(0.40),
-        forward_soft,
-        random_anchor(0.44),
-        forward_ref,
-        dict(cta_view),
-    ]
-    return [_clip_sample_to_bounds(sample, bounds) for sample in anchors]
+    samples.append(dict(key_samples[-1]))
+    return samples
 
 
-def build_planform_sweep_samples(frame_count: int = 51, seed: int = 11) -> List[Dict[str, float]]:
+def build_planform_sweep_samples(
+    frame_count: int = 51,
+    seed: int = 11,
+    transition_steps: int = 1,
+) -> List[Dict[str, float]]:
     space = build_cta_design_space()
     cta_view = space.cta_flat()
     bounds = space.bounds
     rng = np.random.default_rng(int(seed))
+    if int(frame_count) <= 0:
+        return []
 
-    anchors = _advance_focused_anchor_samples(cta_view, bounds, rng)
-    interval_count = max(len(anchors) - 1, 1)
-    base_interval = 2
-    total_frames = interval_count * base_interval + 1
-    if total_frames != int(frame_count):
-        raise ValueError(
-            f"Anchor layout expects {total_frames} frames with interval {base_interval}, got {frame_count}"
-        )
-
-    samples: List[Dict[str, float]] = []
-    for idx in range(interval_count):
-        samples.extend(_interpolate_samples(anchors[idx], anchors[idx + 1], base_interval))
-    samples.append(dict(anchors[-1]))
-    samples = samples[: int(frame_count)]
-    if samples:
-        samples[0] = dict(cta_view)
-    return samples
+    transition_steps = max(int(transition_steps), 1)
+    key_frame_count = max(2, 1 + (int(frame_count) - 1) // transition_steps)
+    latin_samples = _latin_hypercube_samples(bounds, key_frame_count - 1, rng)
+    ordered_samples = _order_samples_nearest_neighbor(latin_samples, cta_view, bounds)
+    key_samples = [dict(cta_view), *[{**cta_view, **sample} for sample in ordered_samples]]
+    samples = _interpolate_sample_path(key_samples, transition_steps)
+    if len(samples) < int(frame_count):
+        samples.extend([dict(samples[-1])] * (int(frame_count) - len(samples)))
+    return samples[: int(frame_count)]
 
 
 def _render_frame(
@@ -378,10 +289,10 @@ def main() -> None:
             frame_path = tmp_dir_path / f"frame_{idx:03d}.png"
             _render_frame(sample, cta_curves, idx, len(samples), frame_path)
             images.append(Image.open(frame_path).convert("P", palette=Image.Palette.ADAPTIVE))
-            durations.append(140)
+            durations.append(260)
         if durations:
-            durations[0] = 420
-            durations[-1] = 420
+            durations[0] = 700
+            durations[-1] = 700
         images[0].save(
             OUTPUT_GIF,
             save_all=True,

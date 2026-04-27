@@ -190,6 +190,27 @@ class HybridSplineLinearAxis:
         return float(self._linear_axis(y))
 
 
+class HybridTailAxis:
+    def __init__(self, prefix_axis: object, points: np.ndarray, linear_start_index: int):
+        pts = PiecewiseLinearAxis(points).points
+        if linear_start_index < 1 or linear_start_index >= pts.shape[0] - 1:
+            raise ValueError(
+                "HybridTailAxis requires 1 <= linear_start_index < point_count - 1, "
+                f"got {linear_start_index} for {pts.shape[0]} points"
+            )
+        self.points = pts
+        self.linear_start_index = int(linear_start_index)
+        self._prefix_axis = prefix_axis
+        self._linear_axis = PiecewiseLinearAxis(pts[self.linear_start_index :])
+        self._linear_start_y = float(pts[self.linear_start_index, 1])
+
+    def __call__(self, y: float) -> float:
+        y = float(y)
+        if y <= self._linear_start_y:
+            return float(self._prefix_axis(y))
+        return float(self._linear_axis(y))
+
+
 class SplineBridgeAxis:
     def __init__(
         self,
@@ -358,44 +379,32 @@ class SymmetryRootBlendAxis:
         target_slope: float,
         blend_y: float,
         continuity_order: int,
+        post_axis: object | None = None,
     ):
         self.base_axis = base_axis
+        self.post_axis = base_axis if post_axis is None else post_axis
         self.root_x = float(root_x)
         self.target_slope = float(target_slope)
         self.blend_y = float(max(blend_y, 0.0))
         self.continuity_order = int(continuity_order)
-        self._curve = None
 
     def __call__(self, y: float) -> float:
         y_abs = abs(float(y))
         if y_abs <= 1e-12:
             return self.root_x
         if self.blend_y <= 1e-12 or y_abs >= self.blend_y:
-            return float(self.base_axis(y_abs))
-        x1 = float(self.base_axis(self.blend_y))
-        if self._curve is None:
-            pad = 0.5 * self.blend_y
-            y_mid = 0.35 * self.blend_y
-            x_mid = smooth_transition(
-                y=y_mid,
-                y0=0.0,
-                y1=self.blend_y,
-                x0=self.root_x,
-                x1=x1,
-                dx0=0.0,
-                dx1=self.target_slope,
-                continuity_order=self.continuity_order,
-            )
-            Curve = load_pyspline_curve(rebuild_if_needed=True)
-            support_y = np.asarray((0.0, y_mid, self.blend_y, self.blend_y + pad), dtype=float)
-            support_x = np.asarray((self.root_x, x_mid, x1, x1 + self.target_slope * pad), dtype=float)
-            if np.allclose(support_x, support_x[0], atol=1e-12, rtol=1e-12):
-                self._curve = float(support_x[0])
-            else:
-                self._curve = Curve(x=support_x, s=support_y, k=min(4, support_x.size))
-        if isinstance(self._curve, (float, np.floating)):
-            return float(self._curve)
-        return float(np.asarray(self._curve(y_abs)).reshape(-1)[0])
+            return float(self.post_axis(y_abs))
+        x1 = float(self.post_axis(self.blend_y))
+        return smooth_transition(
+            y=y_abs,
+            y0=0.0,
+            y1=self.blend_y,
+            x0=self.root_x,
+            x1=x1,
+            dx0=0.0,
+            dx1=self.target_slope,
+            continuity_order=self.continuity_order,
+        )
 
 
 @dataclass
@@ -423,7 +432,23 @@ def _build_span_axis(
     inboard_radius_factor: float = 1.0,
 ):
     if linear_start_index is not None:
-        return HybridSplineLinearAxis(points, linear_start_index=int(linear_start_index))
+        pts = PiecewiseLinearAxis(points).points
+        if spline_bridge is not None:
+            prefix_axis = SplineBridgeAxis(
+                pts,
+                start_index=int(spline_bridge[0]),
+                end_index=int(spline_bridge[1]),
+                inboard_radius_factor=inboard_radius_factor,
+            )
+        else:
+            prefix_axis = SegmentedSpanAxis(
+                pts,
+                continuity_order=continuity_order,
+                blend_fraction=blend_fraction,
+                min_linear_core_fraction=min_linear_core_fraction,
+                exact_segment_indices=exact_segment_indices,
+            )
+        return HybridTailAxis(prefix_axis, pts, linear_start_index=int(linear_start_index))
 
     if spline_bridge is not None:
         return SplineBridgeAxis(
@@ -475,11 +500,36 @@ def build_sectioned_bwb_planform(
         ),
         exact_segment_indices=planform.te_exact_segments,
         spline_bridge=planform.te_spline_bridge,
+        linear_start_index=planform.te_linear_start_index,
         inboard_radius_factor=planform.te_inboard_radius_factor,
     )
 
     if planform.symmetry_blend_y > 1e-12:
-        le_slope0 = float((le_points[1, 0] - le_points[0, 0]) / max(le_points[1, 1] - le_points[0, 1], 1e-12))
+        le_post_axis = le_axis
+        if planform.body_le_fixed_points and le_points.shape[0] >= 3:
+            le_slope0 = float(
+                (le_points[2, 0] - le_points[1, 0]) / max(le_points[2, 1] - le_points[1, 1], 1e-12)
+            )
+            le_linear_start_shifted = None
+            if planform.le_linear_start_index is not None:
+                le_linear_start_shifted = max(int(planform.le_linear_start_index) - 1, 1)
+            le_exact_shifted = tuple(max(int(index) - 1, 0) for index in planform.le_exact_segments if int(index) >= 1)
+            le_spline_bridge_shifted = None
+            if planform.le_spline_bridge is not None:
+                start_idx, end_idx = planform.le_spline_bridge
+                if int(start_idx) >= 1 and int(end_idx) >= 1:
+                    le_spline_bridge_shifted = (int(start_idx) - 1, int(end_idx) - 1)
+            le_post_axis = _build_span_axis(
+                le_points[1:],
+                continuity_order=planform.continuity_order,
+                blend_fraction=planform.blend_fraction,
+                min_linear_core_fraction=planform.min_linear_core_fraction,
+                exact_segment_indices=le_exact_shifted,
+                spline_bridge=le_spline_bridge_shifted,
+                linear_start_index=le_linear_start_shifted,
+            )
+        else:
+            le_slope0 = float((le_points[1, 0] - le_points[0, 0]) / max(le_points[1, 1] - le_points[0, 1], 1e-12))
         if planform.body_le_fixed_points:
             blend_y = float(min(planform.symmetry_blend_y, le_points[1, 1]))
         else:
@@ -490,6 +540,7 @@ def build_sectioned_bwb_planform(
             target_slope=le_slope0,
             blend_y=blend_y,
             continuity_order=planform.continuity_order,
+            post_axis=le_post_axis,
         )
         if not planform.body_le_fixed_points and 0 not in planform.te_exact_segments:
             te_slope0 = float((te_points[1, 0] - te_points[0, 0]) / max(te_points[1, 1] - te_points[0, 1], 1e-12))

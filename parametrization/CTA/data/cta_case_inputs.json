@@ -4,10 +4,10 @@
     "y_1_m": 8.041,
     "y_2_m": 12.5081007083,
     "y_3_m": 39.4995,
-    "le_x_0_m": 0.0,
-    "le_x_1_m": 15.785947611133833,
-    "le_x_2_m": 21.946845426354557,
-    "le_x_3_m": 36.103616972154164,
+    "le_x_0_m": 3.513099,
+    "le_x_1_m": 19.299046611133835,
+    "le_x_2_m": 25.459944426354556,
+    "le_x_3_m": 39.616715972154165,
     "chord_0_m": 41.17952274,
     "chord_1_m": 13.9269627,
     "chord_2_m": 7.76845979406,
@@ -191,11 +191,11 @@
     "profile_generation_mode": "cst_only",
     "body_le_fixed_points": [
       [
-        1.905,
+        5.418099,
         1.9
       ],
       [
-        10.787,
+        14.300099,
         5.694
       ]
     ],
@@ -218,7 +218,7 @@
       3
     ],
     "symmetry_blend_y": 1.9,
-    "section_interpolation": "linear",
+    "section_interpolation": "pchip",
     "airfoil_distribution_mode": "anchors",
     "num_airfoil_points": 241,
     "num_base_stations": 41,

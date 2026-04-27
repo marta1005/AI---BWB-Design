@@ -22,6 +22,7 @@ import matplotlib.pyplot as plt
 
 from parametrization.CTA.case import build_cta_design, to_cta_model_config
 from parametrization.shared.airfoil_fit import load_xyz_sections_by_span
+from parametrization.shared.cst import cosine_spacing
 from parametrization.CTA.codes.plotting.plot_cta_views import (
     front_linear_edge_traces,
     front_linear_envelope,
@@ -41,42 +42,78 @@ def _cta_envelope():
     config = to_cta_model_config(design, use_cta_anchor_twist=True)
     prepared = prepare_geometry(config)
     anchor_y = np.asarray(config.topology.anchor_y_array, dtype=float)
+    root_dense = (
+        float(config.planform.symmetry_blend_y) * cosine_spacing(240)
+        if float(config.planform.symmetry_blend_y) > 1.0e-12
+        else np.array([], dtype=float)
+    )
     dense_span = np.unique(
-        np.concatenate([np.linspace(0.0, config.topology.span, 2400), config.topology.y_sections_array, anchor_y])
+        np.concatenate(
+            [
+                np.linspace(0.0, config.topology.span, 2400),
+                root_dense,
+                config.topology.y_sections_array,
+                anchor_y,
+            ]
+        )
     )
     upper, lower, _, _ = front_linear_envelope(prepared, dense_span, anchor_y)
     z_le, z_te_upper, z_te_lower, z_te_mid = front_linear_edge_traces(prepared, dense_span, anchor_y)
     return dense_span, upper, lower, z_le, z_te_upper, z_te_lower, z_te_mid, anchor_y
 
 
-def _anchor_mismatch_summary(
-    sections: dict[float, np.ndarray],
+def _save_clean_compare_figure(
+    output_path: Path,
+    cta_y: np.ndarray,
+    cta_upper: np.ndarray,
+    cta_lower: np.ndarray,
+    glider_y: np.ndarray,
+    glider_upper: np.ndarray,
+    glider_lower: np.ndarray,
     anchor_y: np.ndarray,
-) -> tuple[np.ndarray, np.ndarray]:
-    design = build_cta_design()
-    config = to_cta_model_config(design, use_cta_anchor_twist=True)
-    prepared = prepare_geometry(config)
+) -> None:
+    fig, ax = plt.subplots(figsize=(14.0, 5.6), constrained_layout=True)
 
-    d_upper = []
-    d_lower = []
-    for yy in anchor_y:
-        raw_key = min(sections.keys(), key=lambda value: abs(value - float(yy)))
-        raw = sections[raw_key]
-        raw_upper = float(np.max(raw[:, 1]))
-        raw_lower = float(np.min(raw[:, 1]))
+    ax.fill_between(cta_y, cta_lower, cta_upper, color="#dce7f1", zorder=1, alpha=0.92)
+    ax.fill_between(-cta_y, cta_lower, cta_upper, color="#dce7f1", zorder=1, alpha=0.92)
+    ax.plot(cta_y, cta_upper, color="#0f4c5c", linewidth=2.3, zorder=3)
+    ax.plot(cta_y, cta_lower, color="#0f4c5c", linewidth=2.3, zorder=3)
+    ax.plot(-cta_y, cta_upper, color="#0f4c5c", linewidth=2.3, zorder=3)
+    ax.plot(-cta_y, cta_lower, color="#0f4c5c", linewidth=2.3, zorder=3, label="CTA envelope")
 
-        yu, yl, _ = prepared.section_model.coordinates_at_y(float(yy))
-        chord = float(prepared.planform.te_x(float(yy)) - prepared.planform.le_x(float(yy)))
-        vertical = float(np.interp(float(yy), prepared.loft.span_stations, prepared.loft.vertical_y))
-        twist = float(prepared.spanwise_laws.twist_deg(float(yy)))
-        x_local = prepared.section_model.x_air * chord
-        twist_rad = np.deg2rad(twist)
-        z_up = vertical + x_local * np.sin(twist_rad) + yu * chord * np.cos(twist_rad)
-        z_lo = vertical + x_local * np.sin(twist_rad) + yl * chord * np.cos(twist_rad)
-        d_upper.append(float(np.max(z_up)) - raw_upper)
-        d_lower.append(float(np.min(z_lo)) - raw_lower)
+    glider_style = {
+        "color": "#c2410c",
+        "linewidth": 2.0,
+        "linestyle": "--",
+        "zorder": 4,
+        "alpha": 0.95,
+    }
+    ax.plot(glider_y, glider_upper, **glider_style)
+    ax.plot(glider_y, glider_lower, **glider_style)
+    ax.plot(-glider_y, glider_upper, **glider_style)
+    ax.plot(-glider_y, glider_lower, label="bwb_glider envelope", **glider_style)
 
-    return np.asarray(d_upper, dtype=float), np.asarray(d_lower, dtype=float)
+    for x_value in np.unique(np.concatenate((-anchor_y[1:], anchor_y[1:]))):
+        ax.axvline(float(x_value), color="#64748b", linewidth=0.8, linestyle=(0, (4, 4)), alpha=0.30, zorder=2)
+
+    ax.axhline(0.0, color="#94a3b8", linewidth=0.9, linestyle=":")
+    ax.axvline(0.0, color="#94a3b8", linewidth=0.9, linestyle=":")
+    ax.set_title("CTA envelope vs bwb_glider envelope")
+    ax.set_xlabel("spanwise y [m]")
+    ax.set_ylabel("vertical z [m]")
+    ax.set_aspect("equal", adjustable="box")
+    ax.grid(True, linewidth=0.35, alpha=0.30)
+
+    span = max(float(np.max(cta_y)), float(np.max(glider_y)))
+    z_all = np.concatenate([cta_upper, cta_lower, glider_upper, glider_lower])
+    z_span = max(1e-9, float(np.ptp(z_all)))
+    ax.set_xlim(-span - 1.0, span + 1.0)
+    ax.set_ylim(float(np.min(z_all)) - 0.08 * z_span, float(np.max(z_all)) + 0.08 * z_span)
+    ax.legend(loc="lower right", fontsize=8.6, framealpha=0.94)
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output_path, dpi=220)
+    plt.close(fig)
 
 
 def main() -> None:
@@ -93,7 +130,6 @@ def main() -> None:
         cta_z_te_mid,
         anchor_y,
     ) = _cta_envelope()
-    d_upper, d_lower = _anchor_mismatch_summary(sections, anchor_y)
 
     fig, ax = plt.subplots(figsize=(14.0, 5.4), constrained_layout=True)
 
@@ -109,7 +145,7 @@ def main() -> None:
     ax.plot(cta_y, cta_z_te_lower, color="#ea580c", linewidth=1.5, linestyle="--", alpha=0.75, zorder=2, label="CTA TE lower z(y)")
     ax.plot(cta_y, cta_z_te_mid, color="#475569", linewidth=1.4, linestyle="-.", alpha=0.75, zorder=2, label="CTA TE mid z(y)")
 
-    for yy, du, dl in zip(anchor_y, d_upper, d_lower):
+    for yy in anchor_y:
         ax.axvline(float(yy), color="#64748b", linewidth=0.8, linestyle=(0, (4, 4)), alpha=0.45, zorder=0)
         ax.text(
             float(yy),
@@ -124,23 +160,6 @@ def main() -> None:
         )
         ax.plot([yy], [np.interp(yy, cta_y, cta_upper)], marker="x", color="#dc2626", markersize=6.0, zorder=5)
         ax.plot([yy], [np.interp(yy, cta_y, cta_lower)], marker="x", color="#dc2626", markersize=6.0, zorder=5)
-
-    summary = (
-        f"Anchor mismatch CTA - glider\n"
-        f"Upper max: {float(np.max(np.abs(d_upper))):.3f} m\n"
-        f"Lower max: {float(np.max(np.abs(d_lower))):.3f} m"
-    )
-    ax.text(
-        0.015,
-        0.98,
-        summary,
-        transform=ax.transAxes,
-        ha="left",
-        va="top",
-        fontsize=9.0,
-        color="#1f2937",
-        bbox={"boxstyle": "round,pad=0.22", "facecolor": "white", "edgecolor": "#cbd5e1", "alpha": 0.95},
-    )
 
     ax.set_title("CTA vertical overlay vs bwb_glider raw sections")
     ax.set_xlabel("spanwise y [m]")
@@ -157,7 +176,20 @@ def main() -> None:
     fig.savefig(output_path, dpi=220)
     plt.close(fig)
 
+    clean_compare_path = CTA_DIR / "outputs" / "wing" / "cta_envelope_vs_bwb_glider.png"
+    _save_clean_compare_figure(
+        clean_compare_path,
+        cta_y,
+        cta_upper,
+        cta_lower,
+        glider_y,
+        glider_upper,
+        glider_lower,
+        anchor_y,
+    )
+
     print(f"CTA vs glider vertical overlay PNG written to: {output_path}")
+    print(f"CTA envelope vs glider PNG written to: {clean_compare_path}")
 
 
 if __name__ == "__main__":

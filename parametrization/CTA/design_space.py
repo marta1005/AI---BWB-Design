@@ -80,6 +80,57 @@ _SECTION_PUBLIC_LABELS: Dict[str, str] = {
     "c4": "C5",
 }
 
+CTA_THICKNESS_CONSTRAINTS: Tuple[Dict[str, object], ...] = (
+    {
+        "parameter": "RThickness_CentreBody",
+        "station": "C0",
+        "display_name": "Relative thickness centre body",
+        "symbol": "RThickness_C0",
+        "units": "-",
+        "normalization": "t/c",
+        "reference": 0.141,
+        "lower_bound": 0.12,
+        "upper_bound": 0.18,
+        "description": "Thickness/chord ratio at the centre body root chord.",
+    },
+    {
+        "parameter": "RThickness_MidWing",
+        "station": "C3",
+        "display_name": "Relative thickness mid wing",
+        "symbol": "RThickness_C3",
+        "units": "-",
+        "normalization": "t/c",
+        "reference": 0.164,
+        "lower_bound": 0.14,
+        "upper_bound": 0.20,
+        "description": "Thickness/chord ratio at the mid wing root chord.",
+    },
+    {
+        "parameter": "RThickness_OutWing",
+        "station": "C4",
+        "display_name": "Relative thickness outer wing",
+        "symbol": "RThickness_C4",
+        "units": "-",
+        "normalization": "t/c",
+        "reference": 0.1027,
+        "lower_bound": 0.08,
+        "upper_bound": 0.16,
+        "description": "Thickness/chord ratio at the outer wing root chord.",
+    },
+    {
+        "parameter": "RThickness_OutWing_Tip",
+        "station": "C5",
+        "display_name": "Relative thickness outer wing tip",
+        "symbol": "RThickness_C5",
+        "units": "-",
+        "normalization": "t/c",
+        "reference": 0.095,
+        "lower_bound": 0.08,
+        "upper_bound": 0.13,
+        "description": "Thickness/chord ratio at the outer wing tip chord.",
+    },
+)
+
 
 def _wing_span_m(span: float, b1_fixed_m: float) -> float:
     wing_span = float(span - b1_fixed_m)
@@ -180,6 +231,13 @@ def _cta_public_flat_from_design(
         chord_out_m=c5_wing_tip,
     )
     return flat
+
+
+def _cta_design_space_seed(
+    cta_design: Optional[SectionedBWBDesignVariables] = None,
+) -> SectionedBWBDesignVariables:
+    base = build_cta_design() if cta_design is None else cta_design
+    return apply_cta_fixed_parameters(base, cta_design=base)
 
 
 def _cta_cst_bounds(cta_flat: Dict[str, float]) -> Dict[str, Tuple[float, float]]:
@@ -387,8 +445,7 @@ def build_cta_design_space(
     - variable: wing span, B2 fraction, C0, C3, transition taper ratio C4/C3, C5,
       public chord sweeps S1/S2, twists, and CST.
     """
-    design = build_cta_design() if cta_design is None else cta_design
-    design = apply_cta_fixed_parameters(design, cta_design=design)
+    design = _cta_design_space_seed(cta_design=cta_design)
     bounds = _cta_public_bounds(design)
     return CTADesignSpace(
         preset_name="cta_ai_core",
@@ -397,6 +454,11 @@ def build_cta_design_space(
         seed_design=design,
         bounds=bounds,
     )
+
+
+def cta_thickness_constraints() -> List[Dict[str, object]]:
+    """Thickness constraints tracked for CTA designs but not sampled as active variables."""
+    return [dict(item) for item in CTA_THICKNESS_CONSTRAINTS]
 
 
 def cta_fixed_parameters(
@@ -558,6 +620,7 @@ def cta_design_space_summary(
         "preset_name": ds.preset_name,
         "active_variable_count": len(ds.active_variables),
         "active_variables": list(ds.active_variables),
+        "thickness_constraints": cta_thickness_constraints(),
         "fixed_parameters": cta_fixed_parameters(cta_design=ds.seed_design),
         "cta_active_view": ds.cta_flat(),
         "cta_design": asdict(ds.seed_design),

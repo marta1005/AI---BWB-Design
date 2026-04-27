@@ -27,27 +27,12 @@ def _integrate(values: np.ndarray, coordinates: np.ndarray) -> float:
     return float(np.trapz(values, coordinates))
 
 
-def evaluate_volume_constraint(
+def _compute_enclosed_volume_metrics(
     config: SectionedBWBModelConfig,
     planform: SectionedPlanform,
     section_model: SectionModel,
-) -> VolumeConstraintSummary:
-    volume = config.volume
-    if not volume.enabled:
-        return VolumeConstraintSummary(
-            enabled=False,
-            satisfied=True,
-            enclosed_volume_m3=0.0,
-            required_volume_m3=0.0,
-            volume_margin_m3=0.0,
-            volume_ratio=1.0,
-            mean_cross_section_area_m2=0.0,
-            max_cross_section_area_m2=0.0,
-            max_cross_section_area_y=0.0,
-            span_samples=0,
-        )
-
-    sample_count = max(int(volume.span_samples), 5 * int(config.sampling.num_base_stations))
+) -> tuple[float, float, float, float, int]:
+    sample_count = max(int(config.volume.span_samples), 5 * int(config.sampling.num_base_stations))
     y_samples = np.linspace(0.0, config.topology.span, sample_count, dtype=float)
     local_section_area = np.zeros_like(y_samples)
 
@@ -71,14 +56,45 @@ def evaluate_volume_constraint(
     max_idx = int(np.argmax(local_section_area))
     max_cross_section_area = 2.0 * float(local_section_area[max_idx])
     max_cross_section_area_y = float(y_samples[max_idx])
-    volume_margin = float(enclosed_volume - volume.required_volume_m3)
-    volume_ratio = float(enclosed_volume / max(volume.required_volume_m3, 1e-12))
+    return (
+        float(enclosed_volume),
+        float(mean_cross_section_area),
+        float(max_cross_section_area),
+        float(max_cross_section_area_y),
+        int(sample_count),
+    )
+
+
+def evaluate_volume_constraint(
+    config: SectionedBWBModelConfig,
+    planform: SectionedPlanform,
+    section_model: SectionModel,
+) -> VolumeConstraintSummary:
+    volume = config.volume
+    (
+        enclosed_volume,
+        mean_cross_section_area,
+        max_cross_section_area,
+        max_cross_section_area_y,
+        sample_count,
+    ) = _compute_enclosed_volume_metrics(config, planform, section_model)
+
+    if volume.enabled:
+        volume_margin = float(enclosed_volume - volume.required_volume_m3)
+        volume_ratio = float(enclosed_volume / max(volume.required_volume_m3, 1e-12))
+        satisfied = bool(volume_margin >= 0.0)
+        required_volume = float(volume.required_volume_m3)
+    else:
+        volume_margin = 0.0
+        volume_ratio = 1.0
+        satisfied = True
+        required_volume = 0.0
 
     return VolumeConstraintSummary(
-        enabled=True,
-        satisfied=bool(volume_margin >= 0.0),
+        enabled=bool(volume.enabled),
+        satisfied=satisfied,
         enclosed_volume_m3=float(enclosed_volume),
-        required_volume_m3=float(volume.required_volume_m3),
+        required_volume_m3=required_volume,
         volume_margin_m3=volume_margin,
         volume_ratio=volume_ratio,
         mean_cross_section_area_m2=float(mean_cross_section_area),
