@@ -57,6 +57,38 @@ The idea is:
 - `parametrization/CTA/codes/exports`
   IGES and bounds exports.
 
+## Internal Volume Constraints
+
+The CTA case also carries one explicit set of internal packaging surfaces,
+loaded from:
+
+- `BWB B359-V0 - Internal Volume constraint - Set1 - BWB B359-V0 - Internal Volume constraint - Set1.csv`
+
+These surfaces are evaluated in the CTA CAD reference frame and are used as
+`upper` / `lower` geometric bounds when checking internal packaging.
+
+Defined surfaces:
+
+| Category | Surface | Sense | X range [m] | Y range [m] | Z range [m] | Clearance range [m] |
+| --- | --- | --- | --- | --- | --- | --- |
+| Payload | Cabin Floor | lower | 6.600..35.000 | 0.000..7.640 | -0.184..-0.184 | 0.000..0.000 |
+| Payload | Door Ceiling | upper | 6.600..35.000 | 0.000..6.800 | 2.084..2.084 | 0.000..0.000 |
+| Payload | Cabin Aisle Ceiling | upper | 8.645..33.742 | 0.000..6.100 | 2.159..2.159 | 0.000..0.000 |
+| Payload | Cabin Seat Ceiling | upper | 20.610..32.686 | 0.000..7.336 | 1.714..1.714 | 0.000..0.000 |
+| Payload | Cargo 1 Floor | lower | 15.643..27.498 | 0.000..3.765 | -1.834..-1.834 | 0.000..0.000 |
+| Payload | Cargo 2 Floor | lower | 35.500..39.202 | 0.000..3.065 | -0.259..-0.259 | 0.000..0.000 |
+| Payload | Cargo 2 Ceiling | upper | 35.500..39.202 | 0.000..3.065 | 1.609..1.609 | 0.000..0.000 |
+| LandingGear | NLG | lower | 5.280..7.542 | 0.000..0.500 | -1.471..-0.856 | 0.000..0.000 |
+| LandingGear | MLG 1 | lower | 28.064..31.920 | 0.000..4.050 | -2.035..-1.545 | 0.000..0.000 |
+| LandingGear | MLG 2 | lower | 28.064..31.920 | 0.000..4.050 | -2.322..-1.850 | -0.120..0.000 |
+
+Interpretation:
+
+- `upper` means the CTA geometry must stay at or above that surface.
+- `lower` means the CTA geometry must stay at or below that surface.
+- The table above is the direct definition from the constraint set, before any
+  feasibility check against the current CTA geometry.
+
 ## Step 1: Declare The Canonical Geometry
 
 The first block in the JSON is `canonical_sections`.

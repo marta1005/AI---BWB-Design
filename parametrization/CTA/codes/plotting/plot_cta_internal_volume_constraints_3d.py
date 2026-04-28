@@ -203,7 +203,7 @@ def main() -> None:
         bbox={"boxstyle": "round,pad=0.40", "facecolor": "#ffffff", "edgecolor": "#cbd5e1", "alpha": 0.96},
     )
 
-    ax.set_title("CTA geometry with internal volume constraints", pad=10.0)
+    ax.set_title("CTA internal volume constraints", pad=10.0)
     ax.set_xlabel("X CAD [m]", labelpad=8.0)
     ax.set_ylabel("Y CAD [m]", labelpad=8.0)
     ax.set_zlabel("Z CAD [m]", labelpad=8.0)

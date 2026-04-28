@@ -17,6 +17,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
+from scipy.interpolate import PchipInterpolator
 from scipy.signal import savgol_filter
 
 from parametrization.CTA.case import build_cta_design, to_cta_model_config
@@ -127,8 +128,14 @@ def _smooth_side_envelope(z_curve: np.ndarray) -> np.ndarray:
         return z_values
 
     smooth = savgol_filter(segment, window_length=window, polyorder=3, mode="interp")
+    x_local = np.arange(segment.size, dtype=float)
+    n_ctrl = min(55, max(15, segment.size // 28))
+    ctrl_idx = np.unique(np.linspace(0, segment.size - 1, n_ctrl).round().astype(int))
+    if ctrl_idx.size >= 4:
+        smooth = PchipInterpolator(ctrl_idx, smooth[ctrl_idx])(x_local)
+
     blend = np.ones_like(segment, dtype=float)
-    edge = min(20, max(3, segment.size // 10))
+    edge = min(28, max(4, segment.size // 12))
     if edge > 0:
         ramp = np.linspace(0.0, 1.0, edge, dtype=float)
         blend[:edge] = ramp
@@ -376,16 +383,22 @@ def main() -> None:
         for surface in constraint_set.surfaces
     ]
 
-    summary_text = (
-        f"CTA internal volume constraints in CAD frame | "
-        f"offsets = ({CTA_CAD_REFERENCE_FRAME.offset_x_m:.6f}, "
-        f"{CTA_CAD_REFERENCE_FRAME.offset_y_m:.3f}, "
-        f"{CTA_CAD_REFERENCE_FRAME.offset_z_m:.3f}) m\n"
-        f"Enclosed volume = {constraint_result.total_enclosed_volume_m3:.2f} m³ | "
-        f"minimum margin = {constraint_result.minimum_margin_m:.3f} m | "
-        f"surfaces = {len(constraint_result.surface_results)}"
+    fig.suptitle("CTA internal volume constraints", y=0.97, fontsize=13.0)
+    fig.text(
+        0.5,
+        0.935,
+        (
+            f"offsets = ({CTA_CAD_REFERENCE_FRAME.offset_x_m:.3f}, "
+            f"{CTA_CAD_REFERENCE_FRAME.offset_y_m:.3f}, "
+            f"{CTA_CAD_REFERENCE_FRAME.offset_z_m:.3f}) m | "
+            f"volume = {constraint_result.total_enclosed_volume_m3:.2f} m³ | "
+            f"min margin = {constraint_result.minimum_margin_m:.3f} m"
+        ),
+        ha="center",
+        va="center",
+        fontsize=9.5,
+        color="#475569",
     )
-    fig.suptitle(summary_text, y=0.97, fontsize=12.0)
     fig.legend(
         handles=legend_items,
         loc="upper center",
